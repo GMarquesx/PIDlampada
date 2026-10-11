@@ -58,20 +58,20 @@ static void handleSerial() {
     case 's':
       g_setpoint = constrain(arg.toFloat(), SETPOINT_MIN_C, SETPOINT_MAX_C);
       g_mode = Mode::CLOSED_LOOP;
-      Serial.printf("# setpoint = %.1f C\n", g_setpoint);
+      Serial.printf("# setpoint = %.1f C\r\n", g_setpoint);
       break;
     case 'k': {
       const int sp = arg.indexOf(' ', 1);
       const float kp = arg.substring(0, sp).toFloat();
       const float ki = arg.substring(sp + 1).toFloat();
       pi.setGains(kp, ki);
-      Serial.printf("# Kp = %.5f  Ki = %.6f\n", kp, ki);
+      Serial.printf("# Kp = %.5f  Ki = %.6f\r\n", kp, ki);
       break;
     }
     case 'd':
       g_manual_duty = constrain(arg.toFloat(), 0.0f, 1.0f);
       g_mode = Mode::OPEN_LOOP;
-      Serial.printf("# duty manual = %.2f\n", g_manual_duty);
+      Serial.printf("# duty manual = %.2f\r\n", g_manual_duty);
       break;
     case 'r':
       pi.reset();
@@ -85,7 +85,7 @@ static void handleSerial() {
       Serial.println("# malha fechada");
       break;
     case '?':
-      Serial.printf("# modo=%s sp=%.1f Kp=%.5f Ki=%.6f duty=%.3f\n",
+      Serial.printf("# modo=%s sp=%.1f Kp=%.5f Ki=%.6f duty=%.3f\r\n",
                     modeName(g_mode), g_setpoint, pi.kp(), pi.ki(), g_duty);
       break;
     default:
@@ -104,7 +104,7 @@ void setup() {
 
   Serial.println();
   Serial.println("# PIDlampada - camara termica compacta");
-  Serial.printf("# sensor=%d  escala de tempo=%dx  amostragem=%.0f s\n",
+  Serial.printf("# sensor=%d  escala de tempo=%dx  amostragem=%.0f s\r\n",
                 SENSOR_SOURCE, (int)SIM_TIME_SCALE, SAMPLE_PERIOD_S);
   Serial.println("t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo");
 }
@@ -118,7 +118,6 @@ void loop() {
   last_ms = now;
 
   const float dt = SAMPLE_PERIOD_S;          // tempo de modelo, nao de parede
-  g_model_time_s += dt;
 
   const float temp = sensor::readTemperatureC(g_duty, dt);
   const float vbat = sensor::readBusVoltage();
@@ -155,7 +154,9 @@ void loop() {
 
   digitalWrite(PIN_LED_ST, g_mode == Mode::FAULT ? HIGH : !digitalRead(PIN_LED_ST));
 
-  Serial.printf("%.0f,%.2f,%.1f,%.4f,%.2f,%.2f,%s\n",
+  Serial.printf("%.0f,%.2f,%.1f,%.4f,%.2f,%.2f,%s\r\n",
                 g_model_time_s, temp, g_setpoint, g_duty,
                 g_setpoint - temp, vbat, modeName(g_mode));
+
+  g_model_time_s += dt;  // avanca depois de registrar: primeira linha e' t = 0
 }

@@ -29,9 +29,10 @@ constexpr float TEMP_CUTOFF_C      = 68.0f;     // corte por firmware (TH1 = 70)
 
 constexpr float SAMPLE_PERIOD_S = 60.0f;        // periodo do PI (tau/10)
 
-// Ganhos iniciais - substituir pelos valores da sintonia apos o ensaio.
-constexpr float PI_KP = 0.040f;                 // 1/degC
-constexpr float PI_KI = 0.00012f;               // 1/(degC*s)
+// SIMC (analise/identificacao.ipynb) sobre o ensaio de exemplo.
+// PROVISORIO: refazer com o ensaio de degrau do hardware real.
+constexpr float PI_KP = 0.0637f;                // 1/degC
+constexpr float PI_KI = 0.000105f;              // 1/(degC*s)   Ti = 606 s
 
 // ------------------------------------------------- modelo termico (planta)
 // Levantados no projeto; confirmar com o ensaio de degrau em malha aberta.

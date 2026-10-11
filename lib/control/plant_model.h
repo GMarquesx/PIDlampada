@@ -29,6 +29,9 @@
  * so fecha de novo abaixo de reset_c, cortando a manta (ou, na Rev. D, todo
  * o aquecimento, porque TH2 esta na cadeia de seguranca do rele K1).
  *
+ * Porta aberta: a abertura troca ar com o ambiente por conveccao natural e
+ * soma D ao fator de perda: (1 + G * fan + D * porta) * (T - T_amb).
+ *
  * A ventoinha so empurra a camara para o ambiente - nunca abaixo dele.
  * Os parametros devem ser substituidos pelos do ensaio de degrau real.
  */
@@ -54,6 +57,10 @@ class PlantModel {
   bool  hasHeater() const { return has_heater_; }
   bool  heaterTripped() const { return tripped_; }
   void  setAmbient(float ambient_c) { ambient_c_ = ambient_c; }
+  // Porta da camara. gain = D: quanto a porta aberta multiplica a troca.
+  void  setDoorGain(float gain) { door_gain_ = gain; }
+  void  setDoorOpen(bool open) { door_open_ = open; }
+  bool  doorOpen() const { return door_open_; }
   float ambient() const { return ambient_c_; }
 
   static constexpr int kSubSteps = 6;   // integracao com a manta
@@ -67,4 +74,6 @@ class PlantModel {
   float sink_c_;
   bool  tripped_ = false;
   bool  trip_all_ = false;
+  float door_gain_ = 0.0f;
+  bool  door_open_ = false;
 };

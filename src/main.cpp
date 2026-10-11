@@ -159,6 +159,12 @@ static void handleCommand(const String& raw) {
       reply("# ambiente = %.1f C", sensor::ambientC());
       break;
 
+    case 'p':
+      if (!power::isSimulated()) { reply("# 'p' so existe na simulacao"); break; }
+      sensor::setDoorOpen(arg.toFloat() > 0.5f);
+      reply(sensor::doorOpen() ? "# porta aberta" : "# porta fechada");
+      break;
+
     case 'f':
       if (!power::isSimulated()) { reply("# no hardware a fonte e' escolhida pela SW1"); break; }
       if (arg.startsWith("b")) { power::selectBattery(true);  reply("# fonte = bateria 3S"); }
@@ -178,7 +184,7 @@ static void handleCommand(const String& raw) {
       break;
 
     default:
-      reply("# comandos: s <C> | k <kp> <ki> | d <0-1> | v <0-1> | m 0|1 | r | c | a <C> | f bat|atx | b | ?");
+      reply("# comandos: s <C> | k <kp> <ki> | d <0-1> | v <0-1> | m 0|1 | p 0|1 | r | c | a <C> | f bat|atx | b | ?");
   }
 }
 
@@ -199,14 +205,14 @@ static void publishTelemetry(float temp, float duty_eff) {
            "\"v\":%.2f,\"i\":%.3f,\"p\":%.2f,\"soc\":%.3f,\"src\":\"%s\",\"cut\":%d,"
            "\"mode\":\"%s\",\"kp\":%.5f,\"ki\":%.7f,\"amb\":%.1f,\"sim\":%d,"
            "\"lamps\":%d,\"fan\":%.3f,\"heat\":%.4f,\"hon\":%d,\"th\":%s,\"trip\":%d,"
-           "\"up\":%lu}",
+           "\"door\":%d,\"up\":%lu}",
            g_model_time_s, temp, g_setpoint, g_duty, duty_eff, g_setpoint - temp,
            power::busVoltage(), power::currentA(), power::powerW(),
            power::stateOfCharge(), power::onBattery() ? "BAT" : "ATX",
            power::cutoff() ? 1 : 0, modeName(g_mode), pi.kp(), pi.ki(),
            sensor::ambientC(), power::isSimulated() ? 1 : 0, LAMP_COUNT,
            g_fan, g_heat, g_heater_on ? 1 : 0, sink, sensor::heaterTripped() ? 1 : 0,
-           (unsigned long)millis());
+           sensor::doorOpen() ? 1 : 0, (unsigned long)millis());
   net::publishTelemetry(json);
 }
 

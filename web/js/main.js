@@ -44,7 +44,12 @@ const tableRows = [];
 
 // A cena 3D carrega em paralelo: se o CDN do three.js falhar, o resto segue.
 import('./scene.js')
-  .then(({ ChamberScene }) => { scene = new ChamberScene($('scene')); if (params.has('debug')) window.__scene = scene; if (last) applyScene(last); })
+  .then(({ ChamberScene }) => {
+    scene = new ChamberScene($('scene'));
+    scene.onDoor = (open) => { setDoorUi(open); send(`p ${open ? 1 : 0}`); };
+    if (params.has('debug')) window.__scene = scene;
+    if (last) applyScene(last);
+  })
   .catch((err) => {
     $('scene').innerHTML = '<p class="hint" style="padding:24px">Não foi possível carregar a vista 3D. As leituras abaixo continuam funcionando.</p>';
     log(`# vista 3D indisponível: ${err.message}`);
@@ -128,8 +133,38 @@ function applyScene(d) {
     ue: d.ue ?? d.u, T: d.T, amb: d.amb ?? 25, fault: d.mode === 'FALHA' || d.cut === 1,
     fan: d.fan ?? 0, display: cells, displayKey: cellsKey(cells),
     heat: (d.heat ?? 0) * (d.ue != null && d.u > 0 ? d.ue / d.u : 1), hon: d.hon ?? 0,
-    sink: d.th ?? null, beat: d.t,
+    sink: d.th ?? null, beat: d.t, door: d.door ?? null,
   });
+}
+
+// ------------------------------------------------------------- porta
+const DOOR_GAIN = 4;            // PLANT_DOOR_GAIN: porta aberta troca ~5x mais calor
+let doorOpen = false;
+function setDoorUi(open) {
+  doorOpen = open;
+  $('door-btn').setAttribute('aria-pressed', open ? 'true' : 'false');
+  $('door-text').textContent = open ? 'Fechar a porta' : 'Abrir a porta';
+  if (last) renderMax(last);
+}
+$('door-btn').addEventListener('click', () => {
+  if (scene && scene.renderer) scene.toggleDoor(!doorOpen);
+  else { setDoorUi(!doorOpen); send(`p ${doorOpen ? 1 : 0}`); }
+});
+
+// Temperatura de regime com tudo a 100 %, sem as protecoes:
+//   T = T_amb + (K_lampadas + K_manta) / (1 + D * porta)
+function theoreticalMax(d) {
+  const amb = d.amb ?? 25;
+  const k = 16 + (d.hon === 1 ? 50 : 0);
+  return amb + k / (1 + (doorOpen ? DOOR_GAIN : 0));
+}
+function renderMax(d) {
+  const tmax = theoreticalMax(d);
+  const where = doorOpen ? 'porta aberta' : 'porta fechada';
+  $('tmax').innerHTML = `Máx. teórico: <b>${fmt(tmax, 0)} °C</b> · ${where}`;
+  $('tmax').title = !doorOpen && tmax > 78
+    ? 'Regime com lâmpadas e manta a 100 %. Na prática o corte do firmware (78 °C) e o TH1 (85 °C) agem antes.'
+    : 'Regime com lâmpadas e manta a 100 %.';
 }
 
 // ------------------------------------------------------------- icones
@@ -251,8 +286,15 @@ function render(d) {
 
   const amb = d.amb ?? 25;
   const hon = d.hon === 1;
-  const reach = amb + (hon ? 66 : 16);
-  $('sp-hint').textContent = d.sp > reach - 0.5
+  const locked = scene && scene.doorLockUntil && performance.now() < scene.doorLockUntil;
+  if (d.door != null && d.door !== (doorOpen ? 1 : 0) && !locked) setDoorUi(d.door === 1);
+  renderMax(d);
+  const reach = theoreticalMax(d);
+  $('sp-hint').textContent = doorOpen && d.sp > reach - 0.5
+    ? `Com a porta aberta o ar de dentro troca com o ambiente (${fmt(amb)} °C) e o máximo teórico cai para cerca de ${fmt(reach, 0)} °C. Feche a porta para o PI chegar ao alvo.`
+    : doorOpen
+    ? `Porta aberta: o ar frio entra por baixo e o quente sai por cima. Máximo teórico agora: ${fmt(reach, 0)} °C.`
+    : d.sp > reach - 0.5
     ? `Esse alvo está acima do que as lâmpadas alcançam sozinhas (cerca de ${fmt(reach, 0)} °C com o ambiente atual). Ligue a manta ou o erro não zera.`
     : d.sp < amb + 0.5
     ? `Esse alvo está no nível do ambiente (${fmt(amb)} °C) ou abaixo. O cooler só troca o ar de dentro pelo de fora, então a câmara não esfria abaixo do ambiente.`

@@ -325,6 +325,22 @@ void test_trip_cuts_lamps_too() {
   TEST_ASSERT_TRUE(p.temperature() < antes + 0.5f);       // nada aquecendo alem do calor guardado
 }
 
+// Porta aberta: o regime a 100 % cai para T_amb + (K + Kh) / (1 + D), e fechar
+// a porta volta ao regime original.
+void test_door_open_lowers_steady_state() {
+  PlantModel p(1000.0f, 16.0f, 25.0f, 5.0f);
+  p.setHeater(50.0f, 140.0f, 2.0f, 200.0f, 190.0f, true);  // sem TH2 neste teste
+  p.setDoorGain(PLANT_DOOR_GAIN);
+  p.reset(25.0f);
+  p.setDoorOpen(true);
+  for (int i = 0; i < 600; ++i) p.step(1.0f, 1.0f, 0.0f, 60.0f);
+  const float aberta = 25.0f + 66.0f / (1.0f + PLANT_DOOR_GAIN);
+  TEST_ASSERT_FLOAT_WITHIN(0.3f, aberta, p.temperature());
+  p.setDoorOpen(false);
+  for (int i = 0; i < 600; ++i) p.step(1.0f, 1.0f, 0.0f, 60.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.3f, 25.0f + 66.0f, p.temperature());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_zero_error_gives_zero_output);
@@ -351,5 +367,6 @@ int main(int, char**) {
   RUN_TEST(test_heater_reaches_60);
   RUN_TEST(test_config_reaches_setpoint_max);
   RUN_TEST(test_trip_cuts_lamps_too);
+  RUN_TEST(test_door_open_lowers_steady_state);
   return UNITY_END();
 }

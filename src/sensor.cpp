@@ -39,6 +39,7 @@ void begin() {
 #if SENSOR_SOURCE == SENSOR_PLANT
   g_plant.setHeater(PLANT_HEATER_GAIN_C, PLANT_HEATER_TAU_S, PLANT_HEATER_COUPLING,
                     HEATER_TRIP_C, HEATER_RESET_C, HEATER_TRIP_CUTS_ALL);
+  g_plant.setDoorGain(PLANT_DOOR_GAIN);
   g_plant.reset(PLANT_AMBIENT_C);
 #endif
 }
@@ -77,6 +78,22 @@ void setAmbientC(float ambient_c) {
 }
 
 float ambientC() { return g_ambient_c; }
+
+void setDoorOpen(bool open) {
+#if SENSOR_SOURCE == SENSOR_PLANT
+  g_plant.setDoorOpen(open);
+#else
+  (void)open;
+#endif
+}
+
+bool doorOpen() {
+#if SENSOR_SOURCE == SENSOR_PLANT
+  return g_plant.doorOpen();
+#else
+  return false;
+#endif
+}
 
 float heaterSinkC() {
 #if SENSOR_SOURCE == SENSOR_PLANT

@@ -183,6 +183,37 @@ button, input, select { font: inherit; color: inherit; }
   margin-top: 2px;
 }
 
+.readout__max {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.readout__max b { color: var(--ink-2); font-weight: 600; }
+
+.stage__door {
+  position: absolute;
+  left: var(--gutter);
+  top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(18, 26, 34, 0.72);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.stage__door svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.stage__door:hover { color: var(--ink); border-color: var(--ink-2); }
+.stage__door:focus-visible { outline: 2px solid #6aa6ff; outline-offset: 2px; }
+.stage__door[aria-pressed="true"] { color: #9cc8ff; border-color: rgba(120, 170, 255, 0.7); }
+
 .stage__mode {
   position: absolute;
   right: var(--gutter);

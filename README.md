@@ -266,6 +266,13 @@ Pages a cada push que mexe nela.
 - Setpoint por slider, historico com temperatura e alvo, painel de atuadores
   (lampadas para cima, cooler para baixo), modo manual com lampadas e cooler
   separados, ensaio de degrau.
+- **Porta clicavel:** clique na porta de policarbonato (ou no botao "Abrir a
+  porta") e ela abre. O ar frio entra rente ao piso e o quente sai pela metade
+  de cima; o modelo soma `PLANT_DOOR_GAIN = 4` a troca com o ambiente, entao o
+  maximo teorico a 100 % cai de 91 para ~38 degC com 25 degC de ambiente
+  (`T_amb + 66 / (1 + 4)`). O painel mostra esse maximo teorico ao vivo.
+- Pas do cooler visiveis girando na proporcao do PWM (com rastro, sem efeito
+  estroboscopico), e o ar - frio entrando e quente saindo - indo para a saida.
 - Controles de simulacao: trocar ATX por bateria, ligar/desligar a manta,
   "abrir a janela" (ambiente cai 6 degC) e recarregar a bateria. Bons para
   mostrar o controle reagindo.
@@ -295,6 +302,7 @@ Os comandos sao os mesmos pela serial (115200 baud) e pelo topico
 | `k 0.08 0.0001` | define Kp e Ki em tempo de execucao |
 | `d 0.8` | duty manual de aquecimento (lampadas + manta), malha aberta |
 | `m 1` / `m 0` | liga / desliga a manta |
+| `p 1` / `p 0` | abre / fecha a porta da camara — so simulacao |
 | `v 0.5` | cooler manual (0 a 1), malha aberta |
 | `r` | ensaio de degrau (cooler parado, zera o tempo; duty 100 %, ou 60 % com a manta) |
 | `c` | volta para malha fechada |
@@ -315,7 +323,7 @@ Telemetria MQTT em `pidlampada/<id>/telemetria`, um JSON por amostra:
 {"t":900,"T":45.02,"sp":45.0,"u":0.3051,"ue":0.3051,"e":-0.02,"v":12.00,
  "i":2.89,"p":34.7,"soc":1.000,"src":"ATX","cut":0,"mode":"PI",
  "kp":0.08000,"ki":0.0001000,"amb":25.0,"sim":1,"lamps":5,"fan":0.000,
- "heat":0.3051,"hon":1,"th":52.6,"trip":0,
+ "heat":0.3051,"hon":1,"th":52.6,"trip":0,"door":0,
  "up":15342}
 ```
 
@@ -355,14 +363,15 @@ valores **medidos no hardware** e ressintonize.
 pio test -e native
 ```
 
-24 testes. Cobrem o PI (proporcional puro, saturacao, anti-windup), o ganho
+25 testes. Cobrem o PI (proporcional puro, saturacao, anti-windup), o ganho
 estatico do modelo, a convergencia da malha fechada, a bateria (tensao em
 vazio, queda pela resistencia interna, balanco de energia e desarme do BMS),
 o cooler (esfria mais rapido, nunca liga junto com as lampadas, histerese,
 descida de setpoint mais rapida), o feedforward, a separacao da integral sem
 travar com modelo errado, o formato do display e a manta (ganho somado,
 atraso do dissipador, TH2 abrindo e fechando com histerese, o rele cortando
-lampadas e manta juntas, aquecimento mais rapido e alcance de 60 e de 70 degC).
+lampadas e manta juntas, aquecimento mais rapido, alcance de 60 e de 70 degC
+e o regime com a porta aberta).
 Rodam tambem no CI a cada push.
 
 ## Analise e sintonia

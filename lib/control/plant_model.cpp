@@ -34,7 +34,7 @@ float PlantModel::step(float lamps, float heater, float fan, float dt) {
   if (!has_heater_) {
     // Euler explicito. Estavel enquanto dt*(1+G)/tau < 1: com dt = 60 s,
     // tau = 640 s e G = 3 da 0,375 - folga confortavel.
-    const float loss = (1.0f + fan_gain_ * fan) * (temp_c_ - ambient_c_);
+    const float loss = (1.0f + fan_gain_ * fan + (door_open_ ? door_gain_ : 0.0f)) * (temp_c_ - ambient_c_);
     temp_c_ += (dt / tau_s_) * (gain_c_ * lamps - loss);
     return temp_c_;
   }
@@ -51,7 +51,7 @@ float PlantModel::step(float lamps, float heater, float fan, float dt) {
   const float h = dt / kSubSteps;
   for (int i = 0; i < kSubSteps; ++i) {
     const float q = coupling_ * (sink_c_ - temp_c_);
-    const float loss = (1.0f + fan_gain_ * fan) * (temp_c_ - ambient_c_);
+    const float loss = (1.0f + fan_gain_ * fan + (door_open_ ? door_gain_ : 0.0f)) * (temp_c_ - ambient_c_);
     const float d_air = (gain_c_ * lamps + q - loss) / tau_s_;
     const float d_sink = ((heater_gain_ / coupling_) * heater - (sink_c_ - temp_c_)) / heater_tau_;
     temp_c_ += h * d_air;

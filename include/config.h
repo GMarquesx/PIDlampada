@@ -88,6 +88,9 @@ constexpr float PLANT_GAIN_C    = 16.0f;        // lampadas: 25 W / 1,6 W/K
 constexpr float PLANT_AMBIENT_C = 25.0f;
 // Cooler de 80 mm a 100 % multiplica por (1 + G) a troca com o ambiente.
 constexpr float PLANT_FAN_GAIN  = 5.0f;
+// Porta aberta (so simulacao): abertura de 25 x 24 cm, conveccao natural.
+// Q ~ Cd*W/3*sqrt(g*H*dT/T)*H -> ~6 W/K a dT = 20 K, uns 4x a UA da caixa.
+constexpr float PLANT_DOOR_GAIN = 4.0f;
 
 // Manta de silicone 12 V / 80 W (200 x 200 mm) sob dois dissipadores
 // aletados, isolante embaixo, ventoinha de circulacao M2 soprando nas

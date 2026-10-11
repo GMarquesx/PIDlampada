@@ -24,4 +24,8 @@ float readSetpointPot();
 void  setAmbientC(float ambient_c);
 float ambientC();
 
+// Porta da camara aberta ou fechada (so tem efeito no modo PLANT).
+void  setDoorOpen(bool open);
+bool  doorOpen();
+
 }  // namespace sensor

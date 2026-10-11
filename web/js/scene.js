@@ -47,17 +47,20 @@ const PC_EDGE = new THREE.Color('#a9dcec');
 const TUNGSTEN = new THREE.Color('#ffb25b');
 const ESP_POS = new THREE.Vector3(14.5, 0, 22.5);         // protoboard na mesa
 const ESP_ROT = -0.35;
-const AIR = { out: 110, intake: 60, path: 170, circ: 90, conv: 130 };
-const AIR_N = AIR.out + AIR.intake + AIR.path + AIR.circ + AIR.conv;
+const AIR = { out: 110, intake: 60, path: 170, circ: 90, conv: 130, door: 160 };
+const AIR_N = AIR.out + AIR.intake + AIR.path + AIR.circ + AIR.conv + AIR.door;
+const DOOR_OPEN_RAD = 1.9;                                 // ~110 graus
 const FAN_RPM_MAX = 3000;                                  // ventoinha 80 mm a 12 V
-const FAN_VISUAL_MAX = 9;                                  // rad/s na tela (sem efeito estroboscopico)
+const FAN_VISUAL_MAX = 16;                                 // rad/s na tela
+const FAN_STEP_MAX = 0.36;                                 // rad por quadro: abaixo de meio passo das 7 pas, sem giro ao contrario
 
 export class ChamberScene {
   constructor(host) {
     this.host = host;
     this.target = { ue: 0, T: 25, amb: 25, fault: false, fan: 0, display: null, displayKey: '',
-      heat: 0, hon: 1, sink: null, beat: null };
-    this.shown = { b: 0, heat: 0, fan: 0, pad: 0, sink: 25 };
+      heat: 0, hon: 1, sink: null, beat: null, door: false };
+    this.shown = { b: 0, heat: 0, fan: 0, pad: 0, sink: 25, door: 0 };
+    this.onDoor = null;          // callback(aberta) quando a porta e' clicada
     this.fanAngle = 0;
     this.circAngle = 0;
     this.ledOn = false;
@@ -112,6 +115,7 @@ export class ChamberScene {
     });
 
     this.#build();
+    this.#doorPicking(r.domElement);
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -129,7 +133,49 @@ export class ChamberScene {
     r.setAnimationLoop(() => this.#frame());
   }
 
-  setState(next) { Object.assign(this.target, next); }
+  setState(next) {
+    const { door, ...rest } = next;
+    Object.assign(this.target, rest);
+    if (door != null && performance.now() > this.doorLockUntil) this.target.door = !!door;
+  }
+
+  // Abre ou fecha a porta (tambem chamado pelo botao do painel).
+  toggleDoor(open = !this.target.door) {
+    this.target.door = open;
+    this.doorLockUntil = performance.now() + 2500;   // espera a telemetria confirmar
+    this.controls.autoRotate = false;
+    this.onDoor?.(open);
+  }
+
+  // Clique (sem arrastar) na porta abre/fecha; o cursor vira maozinha em cima dela.
+  #doorPicking(el) {
+    this.doorLockUntil = 0;
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const hit = (ev) => {
+      const b = el.getBoundingClientRect();
+      ndc.set(((ev.clientX - b.left) / b.width) * 2 - 1, -((ev.clientY - b.top) / b.height) * 2 + 1);
+      ray.setFromCamera(ndc, this.camera);
+      return ray.intersectObjects(this.doorPick, false).length > 0;
+    };
+    let down = null;
+    el.addEventListener('pointerdown', (ev) => { down = { x: ev.clientX, y: ev.clientY, t: performance.now() }; });
+    el.addEventListener('pointerup', (ev) => {
+      if (!down) return;
+      const moved = Math.hypot(ev.clientX - down.x, ev.clientY - down.y);
+      const quick = performance.now() - down.t < 450;
+      down = null;
+      if (moved < 7 && quick && hit(ev)) this.toggleDoor();
+    });
+    let last = 0;
+    el.addEventListener('pointermove', (ev) => {
+      if (ev.pointerType !== 'mouse' || ev.buttons) return;
+      const now = performance.now();
+      if (now - last < 60) return;
+      last = now;
+      el.style.cursor = hit(ev) ? 'pointer' : '';
+    });
+  }
 
   #build() {
     const s = this.scene;
@@ -227,6 +273,12 @@ export class ChamberScene {
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 6, 12), steel);
     handle.position.set(w - 2, 0, t / 2 + 0.6);
     door.add(handle);
+    this.door = door;
+    // area de clique um pouco maior que o painel (mais facil no celular)
+    const pick = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1.6), new THREE.MeshBasicMaterial({ visible: false }));
+    pick.position.x = w / 2;
+    door.add(pick);
+    this.doorPick = [pick];
     [-3, 3].forEach((yy) => {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.6), steel);
       leg.position.set(w - 2, yy, t / 2 + 0.3);
@@ -273,16 +325,26 @@ export class ChamberScene {
     st.rotation.y = Math.PI / 2;
     st.position.x = 0.36;
     rotor.add(st);
-    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x23282e, roughness: 0.5, envMapIntensity: 0.5, side: THREE.DoubleSide });
-    for (let i = 0; i < 7; i++) {
-      const arm = new THREE.Group();
-      arm.rotation.x = (i / 7) * Math.PI * 2;
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.08, 0.62), bladeMat);
-      blade.position.y = 1.15;
-      blade.rotation.y = 0.5;
-      arm.add(blade);
-      rotor.add(arm);
-    }
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x55606c, metalness: 0.3, roughness: 0.42,
+      envMapIntensity: 0.9, side: THREE.DoubleSide });
+    const ghostMat = new THREE.MeshBasicMaterial({ color: 0x8e9aa8, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide });
+    const bladeGeo = new THREE.BoxGeometry(0.06, 1.12, 0.78);
+    const blades = (parent, mat) => {
+      for (let i = 0; i < 7; i++) {
+        const arm = new THREE.Group();
+        arm.rotation.x = (i / 7) * Math.PI * 2;
+        const blade = new THREE.Mesh(bladeGeo, mat);
+        blade.position.y = 1.13;
+        blade.rotation.y = 0.5;
+        arm.add(blade);
+        parent.add(arm);
+      }
+    };
+    blades(rotor, bladeMat);
+    // rastro: duas copias translucidas atrasadas (sensacao de velocidade sem estroboscopia)
+    const ghosts = [new THREE.Group(), new THREE.Group()];
+    ghosts.forEach((gh) => { blades(gh, ghostMat); g.add(gh); });
     const blurMat = new THREE.MeshBasicMaterial({ color: 0x2a3038, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
     const blur = new THREE.Mesh(new THREE.RingGeometry(0.62, 1.74, 40), blurMat);
     blur.rotation.y = Math.PI / 2;
@@ -296,7 +358,7 @@ export class ChamberScene {
       g.add(ring);
     }
     g.scale.setScalar(scale);
-    return { g, rotor, blurMat, streakMat };
+    return { g, rotor, blurMat, streakMat, ghosts, ghostMat };
   }
 
   #fans() {
@@ -305,6 +367,7 @@ export class ChamberScene {
     ex.g.position.set(BOX.w / 2 + 0.05, FAN_Y, 0);
     this.scene.add(ex.g);
     this.fanRotor = ex.rotor; this.fanBlurMat = ex.blurMat; this.fanStreakMat = ex.streakMat;
+    this.fanGhosts = ex.ghosts; this.fanGhostMat = ex.ghostMat;
 
     // circulacao M2 60 mm no fundo, embaixo da prateleira, soprando para +z
     const ci = this.#makeFan(CIRC.scale, 0x5d8fd8);
@@ -592,6 +655,7 @@ export class ChamberScene {
   //            furos da prateleira -> cooler, esquentando no caminho
   //   circ   - ventoinha M2 soprando pelas aletas, embaixo da prateleira
   //   conv   - ar quente subindo pelos furos da prateleira
+  //   door   - porta aberta: ar frio entra por baixo, ar quente sai por cima
   #air() {
     const pos = new Float32Array(AIR_N * 3);
     const col = new Float32Array(AIR_N * 3);
@@ -609,6 +673,7 @@ export class ChamberScene {
       }
     };
     add('out', AIR.out); add('intake', AIR.intake); add('path', AIR.path); add('circ', AIR.circ); add('conv', AIR.conv);
+    add('door', AIR.door);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -652,9 +717,12 @@ export class ChamberScene {
         if (!still) s.p += dt * s.v * (0.1 + 0.7 * f);
         if (s.p > 1) s.p -= 1;
         const p = s.p;
-        x = ventX + (fanX - ventX) * smooth(0, 1, p);
-        y = FLOOR + 2 + s.h * 2.4 + (FAN_Y - FLOOR - 3) * smooth(0.3, 0.95, p) + Math.sin(p * 9 + s.w) * 0.4;
-        z = s.z * 9 * (1 - 0.65 * smooth(0.4, 1, p));
+        // frestas -> aletas -> sobe pela prateleira -> converge no disco do cooler
+        x = ventX + (BOX.w / 2 - ventX) * smooth(0, 1, p);
+        const rise = smooth(0.3, 0.95, p);
+        const y0 = FLOOR + 2 + s.h * 2.4;
+        y = y0 + (FAN_Y + s.y * 2.6 - y0) * rise + Math.sin(p * 9 + s.w) * 0.4 * (1 - rise);
+        z = s.z * 9 + (s.z * 2.6 - s.z * 9) * smooth(0.35, 1, p);
         c = mix(Math.sin(Math.min(1, p * 1.12) * Math.PI) * f * 0.85, smooth(0.15, 0.7, p));
       } else if (s.kind === 'circ') {
         // M2: do fundo para a frente, entre as aletas
@@ -665,15 +733,36 @@ export class ChamberScene {
         z = CIRC.z + 2 + s.p * (IN - 4);
         const k = Math.sin(s.p * Math.PI) * (0.18 + 0.8 * heatLvl);
         c = mix(k, 0.25 + 0.75 * heatLvl);
+      } else if (s.kind === 'door') {
+        // porta aberta: plano neutro no meio da altura. Ar frio entra rente ao piso,
+        // ar quente sai pela metade de cima (efeito chamine).
+        const open = this.shown.door;
+        if (!still) s.p += dt * s.v * 0.32;
+        if (s.p > 1) s.p -= 1;
+        const p = s.p;
+        const zDoor = BOX.d / 2;
+        x = (s.x0 / (IN - 3)) * (IN - 4);
+        if (s.h < 0.5) {
+          z = zDoor + 9 - p * 19;                               // de fora para dentro
+          y = FLOOR + 1.2 + s.h * 13 + smooth(0.6, 1, p) * 3;
+          c = mix(Math.sin(p * Math.PI) * open * 0.95, smooth(0.55, 1, p) * warm * 0.6);
+        } else {
+          z = zDoor - 9 + p * 19;                               // de dentro para fora
+          y = FLOOR + 13 + (s.h - 0.5) * 22 + p * 3;
+          c = mix(Math.sin(p * Math.PI) * open * (0.35 + 0.6 * warm), 0.55 + 0.45 * warm);
+        }
       } else {
         // conveccao: sobe pelos furos da prateleira; com o cooler, e' puxada para ele
         if (!still) s.p += dt * s.v * (0.16 + 0.22 * heatLvl);
         if (s.p > 1) { s.p -= 1; s.x0 = (Math.random() - 0.5) * (IN - 3); s.z0 = (Math.random() - 0.5) * (IN - 3); }
         const p = s.p;
         y = SHELF_Y + 0.3 + p * (ceil - SHELF_Y);
-        x = s.x0 + Math.sin(s.w + p * 6) * 0.6 + (fanX - s.x0) * f * p * p;
-        z = s.z0 * (1 - 0.6 * p * f) + Math.cos(s.w + p * 5) * 0.6;
-        const k = Math.sin(Math.min(1, p * 1.2) * Math.PI) * heatLvl * (1 - 0.6 * f);
+        // com o cooler ligado a pluma e' puxada para a saida
+        const pull = f * smooth(0.15, 1, p);
+        y = y + (FAN_Y + s.y * 2.4 - y) * pull * 0.85;
+        x = s.x0 + Math.sin(s.w + p * 6) * 0.6 + (fanX - s.x0) * pull;
+        z = s.z0 * (1 - 0.85 * pull) + Math.cos(s.w + p * 5) * 0.6 * (1 - pull);
+        const k = Math.sin(Math.min(1, p * 1.2) * Math.PI) * heatLvl * (1 - 0.35 * f);
         c = [1.25 * k, 0.5 * k, 0.18 * k];
       }
       pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
@@ -841,10 +930,14 @@ export class ChamberScene {
     const fanGoal = Math.max(0, Math.min(1, t.fan || 0));
     this.shown.fan += (fanGoal - this.shown.fan) * (1 - Math.exp(-dt / 0.8));
     const f = this.shown.fan;
-    if (!this.reduceMotion && f > 0.005) this.fanAngle += (0.6 + (FAN_VISUAL_MAX - 0.6) * f) * dt;
+    const step = f > 0.005 && !this.reduceMotion ? Math.min((0.8 + (FAN_VISUAL_MAX - 0.8) * f) * dt, FAN_STEP_MAX) : 0;
+    this.fanAngle += step;
     this.fanRotor.rotation.x = this.fanAngle;
-    this.fanBlurMat.opacity = Math.min(0.6, f * 0.75);
-    this.fanStreakMat.opacity = 0.5 * f;
+    this.fanGhosts[0].rotation.x = this.fanAngle - step * 0.5;
+    this.fanGhosts[1].rotation.x = this.fanAngle - step;
+    this.fanGhostMat.opacity = 0.22 * Math.min(1, f * 1.6);
+    this.fanBlurMat.opacity = 0.16 * f;
+    this.fanStreakMat.opacity = 0.3 * f;
     this.fanLabelMat.opacity += ((fanGoal > 0.01 ? 1 : 0) - this.fanLabelMat.opacity) * (1 - Math.exp(-dt / 0.3));
     const labelKey = Math.round(fanGoal * 100);
     if (labelKey !== this.fanLabelKey && fanGoal > 0.01) { this.fanLabelKey = labelKey; this.#drawFanLabel(fanGoal); }
@@ -863,6 +956,10 @@ export class ChamberScene {
     this.padMat.emissiveIntensity = 1.4 * this.shown.pad;
     this.sinkMat.emissiveIntensity = 0.55 * sinkHot * sinkHot;
     const heatLvl = Math.max(0, Math.min(1, (this.shown.sink - t.T) / 14 + 0.5 * this.shown.pad));
+    // porta: ~0,7 s para abrir ou fechar
+    this.shown.door += ((t.door ? 1 : 0) - this.shown.door) * (1 - Math.exp(-dt / (this.reduceMotion ? 0.01 : 0.22)));
+    const ease = this.shown.door * this.shown.door * (3 - 2 * this.shown.door);
+    this.door.rotation.y = -DOOR_OPEN_RAD * ease;
     this.#updateAir(dt, f, heatLvl);
 
     // LED azul da ESP32 (GPIO2): o firmware inverte a cada amostra

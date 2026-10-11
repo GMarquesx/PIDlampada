@@ -16,7 +16,7 @@ const C = {
   KP: 0.080, KI: 0.000100,
   INTEGRAL_BAND_C: 3,
   FEEDFORWARD: true,
-  TAU_S: 1000, GAIN_C: 16, AMBIENT_C: 25, FAN_GAIN: 5,
+  TAU_S: 1000, GAIN_C: 16, AMBIENT_C: 25, FAN_GAIN: 5, DOOR_GAIN: 4,
   HEATER_GAIN_C: 50, HEATER_TAU_S: 140, HEATER_COUPLING: 2, HEATER_TRIP_C: 120, HEATER_RESET_C: 100,
   HEATER_TRIP_CUTS_ALL: true,     // TH2 na cadeia do rele K1
   HEATER_R: (12 * 12) / 80,       // manta 12 V / 80 W = 1,8 ohms
@@ -84,7 +84,7 @@ class SplitRange {
 // lib/control/plant_model.cpp - ar + dissipador da manta (dois nos)
 class PlantModel {
   constructor(tau, gain, amb, fanGain) {
-    Object.assign(this, { tau, gain, amb, fanGain, T: amb, Th: amb, hasHeater: false, tripped: false });
+    Object.assign(this, { tau, gain, amb, fanGain, T: amb, Th: amb, hasHeater: false, tripped: false, doorGain: 0, door: false });
   }
   setHeater(gain, tau, coupling, trip, reset, cutsAll = false) {
     Object.assign(this, { hGain: gain, hTau: tau, r: coupling, trip, resetC: reset, cutsAll, hasHeater: true });
@@ -92,7 +92,7 @@ class PlantModel {
   step(lamps, heater, fan, dt) {
     lamps = clamp(lamps, 0, 1); heater = clamp(heater, 0, 1); fan = clamp(fan, 0, 1);
     if (!this.hasHeater) {
-      const loss = (1 + this.fanGain * fan) * (this.T - this.amb);
+      const loss = (1 + this.fanGain * fan + (this.door ? this.doorGain : 0)) * (this.T - this.amb);
       this.T += (dt / this.tau) * (this.gain * lamps - loss);
       return this.T;
     }
@@ -102,7 +102,7 @@ class PlantModel {
     const h = dt / 6;
     for (let i = 0; i < 6; i++) {
       const q = this.r * (this.Th - this.T);
-      const loss = (1 + this.fanGain * fan) * (this.T - this.amb);
+      const loss = (1 + this.fanGain * fan + (this.door ? this.doorGain : 0)) * (this.T - this.amb);
       const dAir = (this.gain * lamps + q - loss) / this.tau;
       const dSink = ((this.hGain / this.r) * heater - (this.Th - this.T)) / this.hTau;
       this.T += h * dAir;
@@ -156,6 +156,7 @@ export class DemoDevice extends EventTarget {
     this.split = new SplitRange();
     this.plant = new PlantModel(C.TAU_S, C.GAIN_C, C.AMBIENT_C, C.FAN_GAIN);
     this.plant.setHeater(C.HEATER_GAIN_C, C.HEATER_TAU_S, C.HEATER_COUPLING, C.HEATER_TRIP_C, C.HEATER_RESET_C, C.HEATER_TRIP_CUTS_ALL);
+    this.plant.doorGain = C.DOOR_GAIN;
     this.heaterOn = true;
     this.heat = 0;
     this.batt = new BatteryModel(C.BATT_CELLS, C.BATT_WH, C.BATT_RINT);
@@ -228,6 +229,10 @@ export class DemoDevice extends EventTarget {
         this.plant.amb = clamp(isNaN(num) ? C.AMBIENT_C : num, 0, 40);
         this.#reply(`# ambiente = ${this.plant.amb.toFixed(1)} C`);
         break;
+      case 'p':
+        this.plant.door = (isNaN(num) ? 0 : num) > 0.5;
+        this.#reply(this.plant.door ? '# porta aberta' : '# porta fechada');
+        break;
       case 'f':
         this.onBattery = arg.startsWith('b');
         this.#reply(this.onBattery ? '# fonte = bateria 3S' : '# fonte = ATX 12 V');
@@ -291,7 +296,7 @@ export class DemoDevice extends EventTarget {
         soc: this.onBattery ? this.batt.soc : 1, src: this.onBattery ? 'BAT' : 'ATX',
         cut: cut ? 1 : 0, mode: this.mode, kp: this.pi.kp, ki: this.pi.ki,
         amb: this.plant.amb, sim: 1, lamps: C.LAMPS, fan: this.fan,
-        heat: this.heat, hon: this.heaterOn ? 1 : 0, th: this.plant.Th, trip: this.plant.tripped ? 1 : 0,
+        heat: this.heat, hon: this.heaterOn ? 1 : 0, th: this.plant.Th, trip: this.plant.tripped ? 1 : 0, door: this.plant.door ? 1 : 0,
         up: Math.round(performance.now() - this.start0),
       },
     }));

@@ -1,5 +1,5 @@
 """
-Esquema eletrico Rev. B - PIDlampada - folha de desenho A3 (2 folhas).
+Esquema eletrico - PIDlampada - folha de desenho A3 (2 folhas). Revisao atual: C.
 
 Monta o desenho no formato de prancha de engenharia:
   folha 1: esquema completo, tabela de revisoes (canto superior direito),
@@ -12,11 +12,14 @@ Gera as versoes em portugues e em ingles.
 Uso:
     pip install schemdraw playwright
     python -m playwright install chromium
-    python docs/hardware/esquema_rev_b.py
+    python docs/hardware/esquema_eletrico.py
 
 Saida (em docs/hardware/):
-    Esquema_Eletrico_Rev_B.pdf          portugues
-    Electrical_Schematic_Rev_B_EN.pdf   ingles
+    Esquema_Eletrico_Rev_C.pdf          portugues
+    Electrical_Schematic_Rev_C_EN.pdf   ingles
+
+Nova revisao: acrescente a linha em REVISOES, mude REV e marque o que
+mudou com rev(d, (x, y), 'D') em esquema_blocos.py.
     build/                              HTML e SVG intermediarios
 Sem o playwright, abra build/folha_pt.html no navegador e imprima em PDF
 (A3 paisagem, margens "nenhuma").
@@ -32,15 +35,17 @@ BUILD = os.path.join(AQUI, 'build')
 
 # ------------------------------------------------------------------ dados
 DES = 'PIDL-ESQ-001'
-REV = 'B'
+REV = 'C'
 AUTOR = 'Gabriel Marques'
 SIGLA = 'GM'
 DATA_A = '10/10/2026'
 DATA_B = '11/10/2026'
+DATA_C = '11/10/2026'
+DATA_REV = DATA_C
 
 TXT = {
     'pt': dict(
-        arquivo='Esquema_Eletrico_Rev_B.pdf',
+        arquivo='Esquema_Eletrico_Rev_C.pdf',
         titulo='CÂMARA TÉRMICA COMPACTA COM CONTROLE PWM',
         subtitulo='ESQUEMA ELÉTRICO',
         sub2='PINAGEM · NOTAS DE PROJETO · LISTA DE MATERIAIS',
@@ -48,35 +53,39 @@ TXT = {
         local='SÃO JOSÉ DOS CAMPOS - SP',
         revisoes='REVISÕES', rev='REV.', desc='DESCRIÇÃO', data='DATA', resp='RESP.',
         rev_a='Release inicial.',
-        rev_b='Inclusão do cooler de exaustão M1 com Q2, R9, R10, diodo de roda livre D3 e C6. '
-              'Display TM1637 (DS1) com C10. DS18B20 substituído pelo LM35DZ (TS1) com C8 e filtro '
-              'R11/C9. Entrada ATX designada J1. Removidos R1, R8 e LED1.',
+        rev_b='Cooler M1 com Q2, R9, R10, diodo de roda livre D3 e C6. Display DS1 (TM1637) com C10. '
+              'LM35DZ (TS1) no lugar do DS18B20, com C8 e filtro R11/C9. Entrada ATX = J1. Removidos R1, R8 e LED1.',
+        rev_c='Manta de silicone H1 (12 V, 30 W) sob dissipador, com Q3, R12, R13 e TH2 (KSD301 100 °C). '
+              'TH1 passa a KSD301 10 A e corta lâmpadas e manta. F1 6,3 A, D1 SB560, SW1 10 A. GPIO27 = HEAT_GATE.',
         func='', nome='NOME', sigla='SIGLA', elab='ELABORADO', aprov='APROVADO',
         n_des='Nº DO DESENHO', folha='FOLHA', escala='ESCALA', formato='FORMATO',
         sem_escala='S/ ESC.', projeto='PROJETO',
         notas_gerais='NOTAS GERAIS',
         ng=[
-            'Pinagem do U2, notas de projeto e lista de materiais: ver folha 2.',
-            'Triângulo com "B": componente ou ligação incluída ou alterada na revisão B.',
+            'Blocos [1] a [9] na folha 1, ligados entre si pelas etiquetas de rede.',
+            'Triângulo com letra: componente ou ligação incluída ou alterada naquela revisão (B ou C).',
             'Etiquetas de rede com o mesmo nome estão interligadas.',
             'Todos os símbolos de terra são o mesmo nó: GND do pack, do ATX, do U1 e do U2.',
             'Resistores 1/4 W 5 %. Capacitores cerâmicos X7R 50 V. Salvo indicação.',
-            'Malha de potência (+12 V PROT, EL1-EL3, Q1): condutores para no mínimo 2 A.',
+            'Malha de potência (+12 V PROT, TH1, EL1-EL3, H1, Q1, Q3): condutores para no mínimo 5 A.',
         ],
         alim_t='REDES DE ALIMENTAÇÃO', alim_h=('REDE', 'ORIGEM', 'CARGAS', 'CORRENTE'),
-        alim=[('+12 V PROT', 'J1 ou BT1, via SW1, F1, D1', 'EL1-EL3, M1, U1, R2/R3', '≈ 1,5 A'),
+        alim=[('+12 V PROT', 'J1 ou BT1, via SW1, F1, D1', 'TH1, M1, U1, R2/R3', '≈ 4 A máx.'),
+              ('+12V_TH', 'TH1 (KSD301 70 °C)', 'EL1-EL3, TH2 + H1', '≈ 3,75 A máx.'),
               ('+5 V', 'U1 (buck)', 'U2 (VIN), TS1', '≈ 0,3 A pico (Wi-Fi)'),
               ('+3V3', 'regulador da placa U2', 'DS1', '≤ 30 mA')],
         legenda='LEGENDA',
-        leg=['alteração da revisão B', 'etiqueta de rede (liga pelo nome)', 'terra comum', 'junção'],
+        leg=['alteração da revisão', 'etiqueta de rede (liga pelo nome)', 'terra comum', 'junção'],
+        ver_f2='Notas gerais e redes de alimentação: folha 2.',
         pin_t='PINAGEM · U2 ESP32 DEVKIT V1', pino='PINO', rede='REDE', tipo='TIPO', funcao='FUNÇÃO',
         notas_t='NOTAS DE PROJETO',
         bom_t='LISTA DE MATERIAIS', item='ITEM', ref='REF.', qtd='QTD.', descr='DESCRIÇÃO', espec='ESPECIFICAÇÃO',
-        removidos='Removidos na revisão B: R1 (pull-up 1-Wire), R8 e LED1 (LED de status externo) e o sensor DS18B20.',
+        removidos='Removidos na revisão B: R1 (pull-up 1-Wire), R8 e LED1 (LED de status externo) e o sensor DS18B20. '
+                  'Alterados na C: F1 (era 3 A), D1 (era SS34), SW1 (era 3 A), TH1 (era KSD9700).',
         zonas='', idioma='PT',
     ),
     'en': dict(
-        arquivo='Electrical_Schematic_Rev_B_EN.pdf',
+        arquivo='Electrical_Schematic_Rev_C_EN.pdf',
         titulo='COMPACT THERMAL CHAMBER WITH PWM CONTROL',
         subtitulo='ELECTRICAL SCHEMATIC',
         sub2='PINOUT · DESIGN NOTES · BILL OF MATERIALS',
@@ -84,31 +93,35 @@ TXT = {
         local='SÃO JOSÉ DOS CAMPOS - SP · BRAZIL',
         revisoes='REVISIONS', rev='REV.', desc='DESCRIPTION', data='DATE', resp='BY',
         rev_a='Initial release.',
-        rev_b='Added exhaust fan M1 with Q2, R9, R10, flyback diode D3 and C6. TM1637 display (DS1) '
-              'with C10. DS18B20 replaced by LM35DZ (TS1) with C8 and R11/C9 filter. ATX input '
-              'designated J1. Removed R1, R8 and LED1.',
+        rev_b='Fan M1 with Q2, R9, R10, flyback diode D3 and C6. Display DS1 (TM1637) with C10. '
+              'LM35DZ (TS1) replaces DS18B20, with C8 and R11/C9 filter. ATX input = J1. Removed R1, R8, LED1.',
+        rev_c='Silicone heater H1 (12 V, 30 W) under a heatsink, with Q3, R12, R13 and TH2 (KSD301 100 °C). '
+              'TH1 becomes KSD301 10 A and cuts lamps and heater. F1 6.3 A, D1 SB560, SW1 10 A. GPIO27 = HEAT_GATE.',
         func='', nome='NAME', sigla='INIT.', elab='DRAWN', aprov='APPROVED',
         n_des='DRAWING No.', folha='SHEET', escala='SCALE', formato='SIZE',
         sem_escala='NTS', projeto='PROJECT',
         notas_gerais='GENERAL NOTES',
         ng=[
-            'U2 pinout, design notes and bill of materials: see sheet 2.',
-            'Triangle with "B": part or connection added or changed in revision B.',
+            'Blocks [1] to [9] on sheet 1, connected to each other by net labels.',
+            'Triangle with a letter: part or connection added or changed in that revision (B or C).',
             'Net labels with the same name are connected.',
             'All ground symbols are the same node: pack, ATX, U1 and U2 GND.',
             'Resistors 1/4 W 5 %. Ceramic capacitors X7R 50 V. Unless noted.',
-            'Power loop (+12 V PROT, EL1-EL3, Q1): conductors rated 2 A minimum.',
+            'Power loop (+12 V PROT, TH1, EL1-EL3, H1, Q1, Q3): conductors rated 5 A minimum.',
         ],
         alim_t='POWER NETS', alim_h=('NET', 'SOURCE', 'LOADS', 'CURRENT'),
-        alim=[('+12 V PROT', 'J1 or BT1, via SW1, F1, D1', 'EL1-EL3, M1, U1, R2/R3', '≈ 1.5 A'),
+        alim=[('+12 V PROT', 'J1 or BT1, via SW1, F1, D1', 'TH1, M1, U1, R2/R3', '≈ 4 A max.'),
+              ('+12V_TH', 'TH1 (KSD301 70 °C)', 'EL1-EL3, TH2 + H1', '≈ 3.75 A max.'),
               ('+5 V', 'U1 (buck)', 'U2 (VIN), TS1', '≈ 0.3 A peak (Wi-Fi)'),
               ('+3V3', 'U2 on-board regulator', 'DS1', '≤ 30 mA')],
         legenda='LEGEND',
-        leg=['revision B change', 'net label (connects by name)', 'common ground', 'junction'],
+        leg=['revision change', 'net label (connects by name)', 'common ground', 'junction'],
+        ver_f2='General notes and power nets: sheet 2.',
         pin_t='PINOUT · U2 ESP32 DEVKIT V1', pino='PIN', rede='NET', tipo='TYPE', funcao='FUNCTION',
         notas_t='DESIGN NOTES',
         bom_t='BILL OF MATERIALS', item='ITEM', ref='REF.', qtd='QTY', descr='DESCRIPTION', espec='RATING',
-        removidos='Removed in revision B: R1 (1-Wire pull-up), R8 and LED1 (external status LED) and the DS18B20 sensor.',
+        removidos='Removed in revision B: R1 (1-Wire pull-up), R8 and LED1 (external status LED) and the DS18B20 sensor. '
+                  'Changed in C: F1 (was 3 A), D1 (was SS34), SW1 (was 3 A), TH1 (was KSD9700).',
         zonas='', idioma='EN',
     ),
 }
@@ -117,6 +130,8 @@ TXT = {
 PINOS = [
     ('GPIO25', 'PWM_GATE', 'saída', 'output', 'Gate do Q1 (lâmpadas) · LEDC canal 0, 500 Hz, 10 bits',
      'Q1 gate (lamps) · LEDC channel 0, 500 Hz, 10 bit', 'A'),
+    ('GPIO27', 'HEAT_GATE', 'saída', 'output', 'Gate do Q3 (manta) · LEDC canal 1, mesmo timer das lâmpadas',
+     'Q3 gate (heater) · LEDC channel 1, same timer as the lamps', 'C'),
     ('GPIO26', 'FAN_GATE', 'saída', 'output', 'Gate do Q2 (cooler) · LEDC canal 2, 25 kHz, 8 bits',
      'Q2 gate (fan) · LEDC channel 2, 25 kHz, 8 bit', 'B'),
     ('GPIO32', 'TEMP_S', 'analógica', 'analog', 'ADC1_CH4 ← LM35 via filtro R11/C9',
@@ -131,7 +146,7 @@ PINOS = [
     ('GPIO2', '—', 'saída', 'output', 'LED de status da própria placa', 'On-board status LED', 'B'),
     ('GPIO33', 'SETPOINT', 'analógica', 'analog', 'Reservado: potenciômetro de setpoint (só na simulação)',
      'Reserved: setpoint potentiometer (simulation only)', 'A'),
-    ('GPIO27', 'BTN_MODE', 'entrada', 'input', 'Reservado: botão de modo', 'Reserved: mode button', 'A'),
+    ('GPIO13', 'BTN_MODE', 'entrada', 'input', 'Reservado: botão de modo (era GPIO27)', 'Reserved: mode button (was GPIO27)', 'C'),
     ('VIN', '+5 V', 'alimentação', 'supply', 'Entrada de 5 V vinda do U1', '5 V input from U1', 'A'),
     ('3V3', '+3V3', 'alimentação', 'supply', 'Saída do regulador da placa → DS1', 'On-board regulator output → DS1', 'A'),
     ('GND', 'GND', 'terra', 'ground', 'Terra comum', 'Common ground', 'A'),
@@ -144,8 +159,8 @@ NOTAS = {
          'a corrente do enrolamento precisa de caminho e, sem D3, vira um pico de tensão que pode passar '
          'dos 55 V do MOSFET. D3 é Schottky porque o PWM é de 25 kHz.'),
         ('O cooler não passa pelo TH1.',
-         'Na sobretemperatura o KSD9700 corta as lâmpadas e o firmware põe o cooler a 100 % para tirar o calor. '
-         'Se o TH1 cortasse os dois, a câmara esfriaria só por convecção.'),
+         'Na sobretemperatura o TH1 corta lâmpadas e manta e o firmware põe o cooler a 100 % para tirar o calor. '
+         'Se o TH1 cortasse também o cooler, a câmara esfriaria só por convecção.'),
         ('Faixa dividida (split-range).',
          'Um único PI com saída de −1 a 1: positivo aciona as lâmpadas, negativo aciona o cooler, nunca os dois '
          'juntos. O cooler tem rotação mínima de 30 % e histerese de liga/desliga.'),
@@ -158,11 +173,20 @@ NOTAS = {
         ('TM1637 em 3,3 V.',
          'Os pull-ups do módulo vão no VCC. Com o módulo em 5 V o pino DIO do ESP32 receberia acima do limite.'),
         ('Mantidas da revisão A.',
-         'SS34 contra inversão de polaridade, TVS SMBJ15A contra transitório de hot-plug, fusível retardado '
-         'para o inrush, R7 e R10 segurando os gates em 0 V durante o boot.'),
+         'D1 contra inversão de polaridade (SB560 desde a C, pela corrente maior), TVS SMBJ15A contra transitório '
+         'de hot-plug, fusível retardado para o inrush, R7, R10 e R13 segurando os gates em 0 V durante o boot.'),
         ('Compensação de tensão.',
-         'Com bateria a tensão cai de 12,6 para ~9 V. O firmware corrige o duty das lâmpadas por (12/V)² e o '
-         'do cooler por 12/V, medindo V pelo V_SENSE.'),
+         'Com bateria a tensão cai de 12,6 para ~9 V. O firmware corrige o duty das lâmpadas e da manta por (12/V)² '
+         'e o do cooler por 12/V, medindo V pelo V_SENSE.'),
+        ('Manta de silicone na base.',
+         'H1 vai colada sob um dissipador de alumínio aletado: ele espalha o calor por igual e troca com o ar por uma '
+         'área várias vezes maior que a da manta. Um isolante de fibra cerâmica embaixo protege a base de acrílico. '
+         'Recebe o mesmo comando das lâmpadas, então o brilho continua mostrando o sinal de controle; o feedforward '
+         'usa o ganho somado (30 + 60 °C).'),
+        ('Duas proteções térmicas.',
+         'TH1 (KSD301 70 °C, no ar) corta lâmpadas e manta. TH2 (KSD301 100 °C, no dissipador) corta só a manta, '
+         'se o dissipador esquentar demais com o sensor solto ou o ar parado. O firmware ainda corta tudo acima de '
+         '68 °C. O teto de 60 °C no setpoint vem do acrílico, não da potência.'),
     ],
     'en': [
         ('Why a flyback diode only now.',
@@ -170,8 +194,8 @@ NOTAS = {
          'the winding current needs a path and, without D3, becomes a voltage spike that can exceed the 55 V '
          'MOSFET rating. D3 is a Schottky because the PWM runs at 25 kHz.'),
         ('The fan does not go through TH1.',
-         'On over-temperature the KSD9700 cuts the lamps and the firmware drives the fan at 100 % to remove '
-         'heat. If TH1 cut both, the chamber would only cool by convection.'),
+         'On over-temperature TH1 cuts lamps and heater and the firmware drives the fan at 100 % to remove '
+         'heat. If TH1 also cut the fan, the chamber would only cool by convection.'),
         ('Split-range control.',
          'A single PI with output from −1 to 1: positive drives the lamps, negative drives the fan, never both. '
          'The fan has a 30 % minimum speed and on/off hysteresis.'),
@@ -184,21 +208,30 @@ NOTAS = {
         ('TM1637 at 3.3 V.',
          'The module pull-ups go to VCC. With the module at 5 V the ESP32 DIO pin would see more than its limit.'),
         ('Kept from revision A.',
-         'SS34 against reverse polarity, SMBJ15A TVS against hot-plug transients, slow-blow fuse for inrush, '
-         'R7 and R10 holding the gates at 0 V during boot.'),
+         'D1 against reverse polarity (SB560 since C, for the higher current), SMBJ15A TVS against hot-plug '
+         'transients, slow-blow fuse for inrush, R7, R10 and R13 holding the gates at 0 V during boot.'),
         ('Voltage compensation.',
-         'On battery the bus drops from 12.6 to ~9 V. The firmware scales the lamp duty by (12/V)² and the fan '
-         'duty by 12/V, reading V on V_SENSE.'),
+         'On battery the bus drops from 12.6 to ~9 V. The firmware scales the lamp and heater duty by (12/V)² and '
+         'the fan duty by 12/V, reading V on V_SENSE.'),
+        ('Silicone heater in the base.',
+         'H1 is bonded under a finned aluminium heatsink: it spreads the heat evenly and exchanges it with the air '
+         'over an area several times larger than the pad. Ceramic-fibre insulation below protects the acrylic base. '
+         'It gets the same command as the lamps, so their brightness still shows the control signal; the '
+         'feedforward uses the combined gain (30 + 60 °C).'),
+        ('Two thermal cut-offs.',
+         'TH1 (KSD301 70 °C, in the air) cuts lamps and heater. TH2 (KSD301 100 °C, on the heatsink) cuts only the '
+         'heater if the heatsink overheats with a loose sensor or still air. The firmware also cuts everything above '
+         '68 °C. The 60 °C setpoint ceiling comes from the acrylic, not from the power.'),
     ],
 }
 
 # (ref, qtd, desc pt, desc en, espec pt, espec en, rev)
 BOM = [
-    ('BT1', 1, 'Pack de baterias 3S 18650 com BMS', '3S 18650 battery pack with BMS', '11,1 V nom. · 12,6 V máx.', '11.1 V nom. · 12.6 V max.', 'A'),
+    ('BT1', 1, 'Pack de baterias 3S 18650 com BMS', '3S 18650 battery pack with BMS', '12,6 V máx. · BMS ≥ 8 A', '12.6 V max. · BMS ≥ 8 A', 'A'),
     ('J1', 1, 'Conector de entrada ATX (Molex 4 vias)', 'ATX input connector (4-pin Molex)', '+12 V / GND', '+12 V / GND', 'B'),
-    ('SW1', 1, 'Chave seletora SPDT', 'SPDT selector switch', '3 A · ATX / bateria', '3 A · ATX / battery', 'A'),
-    ('F1', 1, 'Fusível retardado', 'Slow-blow fuse', '3 A', '3 A', 'A'),
-    ('D1', 1, 'Diodo Schottky SS34', 'SS34 Schottky diode', '3 A · 40 V', '3 A · 40 V', 'A'),
+    ('SW1', 1, 'Chave seletora SPDT', 'SPDT selector switch', '10 A · ATX / bateria', '10 A · ATX / battery', 'C'),
+    ('F1', 1, 'Fusível retardado', 'Slow-blow fuse', '6,3 A', '6.3 A', 'C'),
+    ('D1', 1, 'Diodo Schottky SB560', 'SB560 Schottky diode', '5 A · 60 V', '5 A · 60 V', 'C'),
     ('D2', 1, 'Supressor TVS SMBJ15A', 'SMBJ15A TVS suppressor', '15 V · 600 W', '15 V · 600 W', 'A'),
     ('C1', 1, 'Capacitor eletrolítico', 'Electrolytic capacitor', '1000 µF · 25 V', '1000 µF · 25 V', 'A'),
     ('C2, C5', 2, 'Capacitor cerâmico', 'Ceramic capacitor', '100 nF · 50 V', '100 nF · 50 V', 'A'),
@@ -211,7 +244,7 @@ BOM = [
     ('R4, R7', 2, 'Resistor', 'Resistor', '10 kΩ', '10 kΩ', 'A'),
     ('R5', 1, 'Resistor', 'Resistor', '20 kΩ', '20 kΩ', 'A'),
     ('R6', 1, 'Resistor', 'Resistor', '150 Ω', '150 Ω', 'A'),
-    ('TH1', 1, 'Termostato bimetálico KSD9700', 'KSD9700 bimetal thermostat', '70 °C · NF', '70 °C · NC', 'A'),
+    ('TH1', 1, 'Termostato bimetálico KSD301 (no ar)', 'KSD301 bimetal thermostat (in the air)', '70 °C · NF · 10 A', '70 °C · NC · 10 A', 'C'),
     ('EL1-EL3', 3, 'Lâmpada halógena W5W com soquete T10', 'W5W halogen lamp with T10 socket', '12 V · 5 W', '12 V · 5 W', 'A'),
     ('Q1', 1, 'MOSFET canal N IRLZ44N', 'IRLZ44N N-channel MOSFET', 'logic-level · TO-220', 'logic-level · TO-220', 'A'),
     ('TS1', 1, 'Sensor de temperatura LM35DZ', 'LM35DZ temperature sensor', '10 mV/°C · TO-92', '10 mV/°C · TO-92', 'B'),
@@ -224,6 +257,13 @@ BOM = [
     ('R9', 1, 'Resistor', 'Resistor', '100 Ω', '100 Ω', 'B'),
     ('R10', 1, 'Resistor', 'Resistor', '10 kΩ', '10 kΩ', 'B'),
     ('DS1', 1, 'Módulo display TM1637', 'TM1637 display module', '4 dígitos com ponto', '4 digits with point', 'B'),
+    ('H1', 1, 'Manta de aquecimento de silicone 100 × 100 mm', '100 × 100 mm silicone heater pad', '12 V · 30 W · 4,8 Ω', '12 V · 30 W · 4.8 Ω', 'C'),
+    ('—', 1, 'Dissipador de alumínio aletado 100 × 100 mm', '100 × 100 mm finned aluminium heatsink', 'sobre H1', 'on top of H1', 'C'),
+    ('—', 1, 'Isolante de fibra cerâmica (papel 2 mm)', 'Ceramic-fibre insulation (2 mm paper)', 'sob H1', 'under H1', 'C'),
+    ('TH2', 1, 'Termostato bimetálico KSD301 (no dissipador)', 'KSD301 bimetal thermostat (on heatsink)', '100 °C · NF · 10 A', '100 °C · NC · 10 A', 'C'),
+    ('Q3', 1, 'MOSFET canal N IRLZ44N', 'IRLZ44N N-channel MOSFET', 'logic-level · TO-220', 'logic-level · TO-220', 'C'),
+    ('R12', 1, 'Resistor', 'Resistor', '150 Ω', '150 Ω', 'C'),
+    ('R13', 1, 'Resistor', 'Resistor', '10 kΩ', '10 kΩ', 'C'),
 ]
 
 # ------------------------------------------------------------------ geometria (mm)
@@ -236,16 +276,17 @@ RT = (268.0, 15.0, 137.0)                               # tabela de revisoes (x,
 
 # quadro de cada bloco: (x, y, largura, altura)
 QUADROS = {
-    '1': (27, 17, 145, 46),
-    '2': (27, 65, 145, 44),
-    '5': (27, 111, 145, 70),
-    '3': (174, 17, 92, 100),
-    '8': (174, 119, 92, 62),
-    '4': (174, 183, 92, 97),
-    '6': (268, 50, 137, 92),
-    '7': (268, 144, 137, 78),
+    '1': (27, 17, 145, 47),
+    '2': (27, 66, 145, 41),
+    '5': (27, 109, 145, 65),
+    '9': (27, 176, 145, 77),
+    '3': (174, 17, 92, 108),
+    '8': (174, 127, 92, 60),
+    '4': (174, 189, 92, 91),
+    '6': (268, 54, 137, 90),
+    '7': (268, 146, 137, 76),
 }
-NOTAS_QUADRO = (27, 183, 145, 97)
+NOTAS_QUADRO = (27, 255, 145, 25)        # so a legenda; notas gerais na folha 2
 TITULO_H, PAD = 7.0, 2.0
 
 esc = html.escape
@@ -293,8 +334,8 @@ def carimbo(t, folha):
 <div class="tb" style="left:{x}mm;top:{y}mm;width:{w}mm;height:{h}mm">
   <table class="sign">
     <tr><th style="width:24mm"></th><th>{t['nome']}</th><th style="width:16mm">{t['sigla']}</th><th style="width:24mm">{t['data']}</th></tr>
-    <tr><td class="k">{t['elab']}</td><td>{AUTOR}</td><td class="c">{SIGLA}</td><td class="c">{DATA_B}</td></tr>
-    <tr><td class="k">{t['aprov']}</td><td>{AUTOR}</td><td class="c">{SIGLA}</td><td class="c">{DATA_B}</td></tr>
+    <tr><td class="k">{t['elab']}</td><td>{AUTOR}</td><td class="c">{SIGLA}</td><td class="c">{DATA_REV}</td></tr>
+    <tr><td class="k">{t['aprov']}</td><td>{AUTOR}</td><td class="c">{SIGLA}</td><td class="c">{DATA_REV}</td></tr>
   </table>
   <div class="ttl">
     <div class="lbl">{t['projeto']} PIDlampada</div>
@@ -309,7 +350,7 @@ def carimbo(t, folha):
       <td style="width:18mm"><div class="lbl">{t['folha']}</div><div class="v c">{folha} / 2</div></td>
       <td style="width:18mm"><div class="lbl">{t['escala']}</div><div class="v c">{t['sem_escala']}</div></td>
       <td style="width:16mm"><div class="lbl">{t['formato']}</div><div class="v c">A3</div></td>
-      <td><div class="lbl">{t['data']}</div><div class="v c">{DATA_B}</div></td>
+      <td><div class="lbl">{t['data']}</div><div class="v c">{DATA_REV}</div></td>
     </tr>
   </table>
 </div>'''
@@ -324,6 +365,7 @@ def tabela_revisoes(t):
     <tr><th style="width:10mm">{t['rev']}</th><th>{t['desc']}</th><th style="width:20mm">{t['data']}</th><th style="width:12mm">{t['resp']}</th></tr>
     <tr><td class="c b">A</td><td>{t['rev_a']}</td><td class="c">{DATA_A}</td><td class="c">{SIGLA}</td></tr>
     <tr><td class="c b">B</td><td>{t['rev_b']}</td><td class="c">{DATA_B}</td><td class="c">{SIGLA}</td></tr>
+    <tr><td class="c b">C</td><td>{t['rev_c']}</td><td class="c">{DATA_C}</td><td class="c">{SIGLA}</td></tr>
   </table>
 </div>'''
 
@@ -365,16 +407,18 @@ def folha1(t, info, k):
                    f'<div class="bt">[{n}]&nbsp; {esc(titulo)}</div></div>')
         out.append(f'<div class="svgbox" style="left:{cx:.2f}mm;top:{cy:.2f}mm">{svg}</div>')
     x, y, w, h = NOTAS_QUADRO
-    itens = ''.join(f'<li>{esc(n)}</li>' for n in t['ng'])
-    leg = ''.join(f'<div>{esc(s)}</div>' for s in t['leg'])
+    icones = [
+        '<polygon points="1,8 9,8 5,1.2" fill="none" stroke="#000" stroke-width="0.35"/><text x="5" y="7" font-size="3.4" text-anchor="middle">C</text>',
+        '<polygon points="0.5,2.5 8,2.5 10,4.5 8,6.5 0.5,6.5" fill="none" stroke="#000" stroke-width="0.35"/>',
+        '<line x1="5" y1="0.5" x2="5" y2="3.5" stroke="#000" stroke-width="0.35"/><line x1="2" y1="3.5" x2="8" y2="3.5" stroke="#000" stroke-width="0.35"/><line x1="3.2" y1="5" x2="6.8" y2="5" stroke="#000" stroke-width="0.35"/><line x1="4.3" y1="6.5" x2="5.7" y2="6.5" stroke="#000" stroke-width="0.35"/>',
+        '<line x1="0.5" y1="5" x2="9.5" y2="5" stroke="#000" stroke-width="0.35"/><line x1="5" y1="1" x2="5" y2="5" stroke="#000" stroke-width="0.35"/><circle cx="5" cy="5" r="0.9"/>',
+    ]
+    leg = ''.join(f'<span class="li"><svg viewBox="0 0 10 9" width="10mm" height="9mm">{ic}</svg>{esc(txt)}</span>'
+                  for ic, txt in zip(icones, t['leg']))
     out.append(f'''<div class="blk notes" style="left:{x}mm;top:{y}mm;width:{w}mm;height:{h}mm">
-      <div class="bt">{t['notas_gerais']}</div>
-      <ol>{itens}</ol>
-      <div class="bt2 al">{t['alim_t']}</div>
-      <table class="alim"><tr>{''.join(f'<th>{h}</th>' for h in t['alim_h'])}</tr>
-      {''.join('<tr>' + ''.join(f'<td>{c}</td>' for c in row) + '</tr>' for row in t['alim'])}</table>
-      <div class="bt2">{t['legenda']}</div>
-      <div class="legrow">{legenda_svg()}<div class="legtxt">{leg}</div></div>
+      <div class="bt">{t['legenda']}</div>
+      <div class="legline">{leg}</div>
+      <div class="verf2">{esc(t['ver_f2'])}</div>
     </div>''')
     out.append(tabela_revisoes(t))
     out.append(carimbo(t, 1))
@@ -386,7 +430,7 @@ def folha2(t, lang):
     out = [f'<section class="sheet">{borda(t["folha"] + " 2/2")}']
     lin = ''.join(
         f'<tr><td class="b">{p}</td><td class="mono">{r}</td><td>{tp if lang == "pt" else te}</td>'
-        f'<td>{fp if lang == "pt" else fe}</td><td class="c">{"△" + rv if rv == "B" else rv}</td></tr>'
+        f'<td>{fp if lang == "pt" else fe}</td><td class="c">{"△" + rv if rv in ("B", "C") else rv}</td></tr>'
         for p, r, tp, te, fp, fe, rv in PINOS)
     out.append('<div class="s2col" style="left:27mm;top:18mm;width:190mm">')
     out.append(f'''<div class="s2 pin">
@@ -396,11 +440,17 @@ def folha2(t, lang):
     </div>''')
     notas = ''.join(f'<li><b>{esc(a)}</b> {esc(b)}</li>' for a, b in NOTAS[lang])
     out.append(f'''<div class="s2 nts">
-      <div class="h2">{t['notas_t']}</div><ol>{notas}</ol></div></div>''')
+      <div class="h2">{t['notas_t']}</div><ol>{notas}</ol></div>''')
+    ng = ''.join(f'<li>{esc(n)}</li>' for n in t['ng'])
+    alim = ''.join('<tr>' + ''.join(f'<td>{esc(c)}</td>' for c in row) + '</tr>' for row in t['alim'])
+    out.append(f'''<div class="s2 ngs">
+      <div class="h2">{t['notas_gerais']}</div><ol>{ng}</ol>
+      <div class="h3">{t['alim_t']}</div>
+      <table><tr>{''.join(f'<th>{h}</th>' for h in t['alim_h'])}</tr>{alim}</table></div></div>''')
     linhas = ''.join(
         f'<tr><td class="c">{i + 1}</td><td class="b">{r}</td><td class="c">{q}</td>'
         f'<td>{dp if lang == "pt" else de}</td><td>{ep if lang == "pt" else ee}</td>'
-        f'<td class="c">{"△" + rv if rv == "B" else rv}</td></tr>'
+        f'<td class="c">{"△" + rv if rv in ("B", "C") else rv}</td></tr>'
         for i, (r, q, dp, de, ep, ee, rv) in enumerate(BOM))
     out.append(f'''<div class="s2 bom" style="left:223mm;top:18mm;width:180mm">
       <div class="h2">{t['bom_t']}</div>
@@ -438,6 +488,11 @@ html, body { margin: 0; padding: 0; background: #fff; color: #000;
 .notes .legrow { position: absolute; left: 4mm; top: 67mm; display: flex; gap: 2mm; }
 .notes .leg { width: 11mm; height: 26mm; flex: none; }
 .notes .legtxt { font-size: 2.45mm; display: grid; grid-auto-rows: 6.2mm; padding-top: 0.6mm; }
+.notes .legline { position: absolute; left: 3mm; right: 3mm; top: 9mm; display: flex; justify-content: space-between; align-items: center; font-size: 2.4mm; }
+.notes .legline .li { display: flex; align-items: center; gap: 1.2mm; }
+.notes .verf2 { position: absolute; right: 3mm; top: 2mm; font-size: 2.3mm; color: #333; }
+.s2.ngs ol { margin: 0; padding-left: 6mm; font-size: 2.6mm; line-height: 1.35; }
+.s2 .h3 { font-size: 2.9mm; font-weight: bold; letter-spacing: 0.05em; margin: 2.5mm 0 1.2mm; }
 .rt { position: absolute; }
 table { border-collapse: collapse; width: 100%; }
 .rt th, .rt td { border: 0.25mm solid #000; font-size: 2.35mm; padding: 0.7mm 1.2mm; vertical-align: top; }
@@ -459,17 +514,17 @@ table { border-collapse: collapse; width: 100%; }
 .tb .fld td:first-child { border-left: 0; }
 .tb .v { font-size: 3.2mm; margin-top: 2.6mm; }
 .tb .v.big { font-size: 3.6mm; font-weight: bold; }
-.s2col { position: absolute; display: flex; flex-direction: column; gap: 9mm; }
+.s2col { position: absolute; display: flex; flex-direction: column; gap: 5mm; }
 .s2col .s2 { position: static; }
 .s2 { position: absolute; }
-.s2 .h2 { font-size: 3.5mm; font-weight: bold; letter-spacing: 0.06em; border-bottom: 0.5mm solid #000; padding-bottom: 0.8mm; margin-bottom: 1.5mm; }
-.s2 th, .s2 td { border: 0.25mm solid #000; font-size: 2.85mm; padding: 1mm 1.5mm; text-align: left; vertical-align: top; }
-.s2 th { font-size: 2.5mm; background: #eee; }
+.s2 .h2 { font-size: 3.2mm; font-weight: bold; letter-spacing: 0.06em; border-bottom: 0.5mm solid #000; padding-bottom: 0.8mm; margin-bottom: 1.5mm; }
+.s2 th, .s2 td { border: 0.25mm solid #000; font-size: 2.5mm; padding: 0.7mm 1.4mm; text-align: left; vertical-align: top; }
+.s2 th { font-size: 2.2mm; background: #eee; }
 .s2 td.c, .s2 th.c { text-align: center; }
-.s2 .mono { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 2.6mm; }
-.s2.nts ol { margin: 0; padding-left: 6mm; font-size: 3.05mm; line-height: 1.4; }
-.s2.nts li { margin-bottom: 1.5mm; }
-.s2 .rem { font-size: 2.8mm; margin: 1.6mm 0 0; }
+.s2 .mono { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 2.3mm; }
+.s2.nts ol { margin: 0; padding-left: 6mm; font-size: 2.6mm; line-height: 1.35; }
+.s2.nts li { margin-bottom: 0.9mm; }
+.s2 .rem { font-size: 2.4mm; margin: 1.6mm 0 0; }
 '''
 
 

@@ -2,7 +2,7 @@
  * Modo demonstracao: a mesma fisica e o mesmo controle do firmware,
  * rodando no navegador.
  *
- * Porta direta de lib/control (pi_controller, split_range, plant_model,
+ * Porta direta de lib/control (pi_controller, split_range, plant_model com a manta,
  * battery_model) e do loop de src/main.cpp - mesma ordem de operacoes,
  * mesmas constantes. Serve para apresentar o painel sem o Wokwi aberto.
  * Os dados ficam claramente marcados como simulados na interface.
@@ -17,6 +17,9 @@ const C = {
   INTEGRAL_BAND_C: 3,
   FEEDFORWARD: true,
   TAU_S: 640, GAIN_C: 30, AMBIENT_C: 25, FAN_GAIN: 3,
+  HEATER_GAIN_C: 60, HEATER_TAU_S: 300, HEATER_COUPLING: 1, HEATER_TRIP_C: 100, HEATER_RESET_C: 85,
+  HEATER_R: (12 * 12) / 30,       // manta 12 V / 30 W = 4,8 ohms
+  STEP_DUTY_HEATER: 0.4,
   LAMPS: 3,
   R_EQ: (12 * 12) / (3 * 5),      // 9,6 ohms
   BASE_W: 0.9,
@@ -77,13 +80,33 @@ class SplitRange {
   }
 }
 
-// lib/control/plant_model.cpp
+// lib/control/plant_model.cpp - ar + dissipador da manta (dois nos)
 class PlantModel {
-  constructor(tau, gain, amb, fanGain) { Object.assign(this, { tau, gain, amb, fanGain, T: amb }); }
-  step(duty, fan, dt) {
-    duty = clamp(duty, 0, 1); fan = clamp(fan, 0, 1);
-    const loss = (1 + this.fanGain * fan) * (this.T - this.amb);
-    this.T += (dt / this.tau) * (this.gain * duty - loss);
+  constructor(tau, gain, amb, fanGain) {
+    Object.assign(this, { tau, gain, amb, fanGain, T: amb, Th: amb, hasHeater: false, tripped: false });
+  }
+  setHeater(gain, tau, coupling, trip, reset) {
+    Object.assign(this, { hGain: gain, hTau: tau, r: coupling, trip, resetC: reset, hasHeater: true });
+  }
+  step(lamps, heater, fan, dt) {
+    lamps = clamp(lamps, 0, 1); heater = clamp(heater, 0, 1); fan = clamp(fan, 0, 1);
+    if (!this.hasHeater) {
+      const loss = (1 + this.fanGain * fan) * (this.T - this.amb);
+      this.T += (dt / this.tau) * (this.gain * lamps - loss);
+      return this.T;
+    }
+    if (this.Th > this.trip) this.tripped = true;
+    else if (this.Th < this.resetC) this.tripped = false;
+    if (this.tripped) heater = 0;
+    const h = dt / 6;
+    for (let i = 0; i < 6; i++) {
+      const q = this.r * (this.Th - this.T);
+      const loss = (1 + this.fanGain * fan) * (this.T - this.amb);
+      const dAir = (this.gain * lamps + q - loss) / this.tau;
+      const dSink = ((this.hGain / this.r) * heater - (this.Th - this.T)) / this.hTau;
+      this.T += h * dAir;
+      this.Th += h * dSink;
+    }
     return this.T;
   }
 }
@@ -131,6 +154,9 @@ export class DemoDevice extends EventTarget {
     this.pi.setIntegralBand(C.INTEGRAL_BAND_C);
     this.split = new SplitRange();
     this.plant = new PlantModel(C.TAU_S, C.GAIN_C, C.AMBIENT_C, C.FAN_GAIN);
+    this.plant.setHeater(C.HEATER_GAIN_C, C.HEATER_TAU_S, C.HEATER_COUPLING, C.HEATER_TRIP_C, C.HEATER_RESET_C);
+    this.heaterOn = true;
+    this.heat = 0;
     this.batt = new BatteryModel(C.BATT_CELLS, C.BATT_WH, C.BATT_RINT);
     this.mode = 'PI';
     this.sp = C.SP_DEFAULT;
@@ -185,9 +211,13 @@ export class DemoDevice extends EventTarget {
         this.mode = 'MANUAL';
         this.#reply(`# cooler manual = ${this.manualFan.toFixed(2)}`);
         break;
+      case 'm':
+        this.heaterOn = (isNaN(num) ? 0 : num) > 0.5;
+        this.#reply(this.heaterOn ? '# manta ligada' : '# manta desligada (so lampadas)');
+        break;
       case 'r':
         this.pi.reset(); this.split.reset(); this.mode = 'DEGRAU'; this.t = 0;
-        this.#reply('# ensaio de degrau iniciado (duty = 1.00)');
+        this.#reply(`# ensaio de degrau iniciado (duty = ${this.#stepDuty().toFixed(2)})`);
         break;
       case 'c':
         this.pi.reset(); this.split.reset(); this.mode = 'PI';
@@ -210,20 +240,25 @@ export class DemoDevice extends EventTarget {
     }
   }
 
+  #gain() { return C.GAIN_C + (this.heaterOn ? C.HEATER_GAIN_C : 0); }
+  #stepDuty() { return this.heaterOn ? C.STEP_DUTY_HEATER : 1; }
+
   // Mesma ordem do loop() em src/main.cpp.
   tick() {
     const dt = C.SAMPLE_PERIOD_S;
 
     // alimentacao do intervalo que passou
+    const base = C.BASE_W + this.fan * C.FAN_W;
     if (this.onBattery) {
-      this.v = this.batt.step(this.duty, C.R_EQ, C.BASE_W + this.fan * C.FAN_W, dt);
+      const g = this.duty / C.R_EQ + this.heat / C.HEATER_R;
+      this.v = g > 0 ? this.batt.step(1, 1 / g, base, dt) : this.batt.step(0, C.R_EQ, base, dt);
       this.i = this.batt.i;
     } else {
       this.v = C.V_NOM;
-      this.i = this.duty * this.v / C.R_EQ + (C.BASE_W + this.fan * C.FAN_W) / this.v;
+      this.i = this.duty * this.v / C.R_EQ + this.heat * this.v / C.HEATER_R + base / this.v;
     }
     const vr = this.v / C.V_NOM;
-    const T = this.plant.step(this.duty * vr * vr, this.fan * vr, dt);
+    const T = this.plant.step(this.duty * vr * vr, this.heat * vr * vr, this.fan * vr, dt);
 
     if (T > C.CUTOFF_C && this.mode !== 'FALHA') {
       this.mode = 'FALHA';
@@ -232,10 +267,10 @@ export class DemoDevice extends EventTarget {
 
     let lamps = 0, fan = 0;
     if (this.mode === 'PI') {
-      const ff = C.FEEDFORWARD ? clamp((this.sp - C.AMBIENT_C) / C.GAIN_C, 0, 1) : 0;
+      const ff = C.FEEDFORWARD ? clamp((this.sp - C.AMBIENT_C) / this.#gain(), 0, 1) : 0;
       ({ lamps, fan } = this.split.update(this.pi.update(this.sp, T, dt, ff)));
     } else if (this.mode === 'MANUAL') { lamps = this.manual; fan = this.manualFan; }
-    else if (this.mode === 'DEGRAU') { lamps = 1; fan = 0; }
+    else if (this.mode === 'DEGRAU') { lamps = this.#stepDuty(); fan = 0; }
     else { lamps = 0; fan = 1; }        // FALHA: lampadas desligadas, cooler no maximo
 
     if (this.v > 6) {
@@ -244,6 +279,7 @@ export class DemoDevice extends EventTarget {
       fan = clamp(fan * ratio, 0, 1);
     }
     this.duty = this.mode === 'FALHA' ? 0 : lamps;
+    this.heat = this.mode === 'FALHA' || !this.heaterOn ? 0 : lamps;
     this.fan = fan;
 
     const cut = this.onBattery && this.batt.cutoff;
@@ -254,6 +290,7 @@ export class DemoDevice extends EventTarget {
         soc: this.onBattery ? this.batt.soc : 1, src: this.onBattery ? 'BAT' : 'ATX',
         cut: cut ? 1 : 0, mode: this.mode, kp: this.pi.kp, ki: this.pi.ki,
         amb: this.plant.amb, sim: 1, lamps: C.LAMPS, fan: this.fan,
+        heat: this.heat, hon: this.heaterOn ? 1 : 0, th: this.plant.Th, trip: this.plant.tripped ? 1 : 0,
         up: Math.round(performance.now() - this.start0),
       },
     }));

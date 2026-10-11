@@ -5,6 +5,7 @@
 namespace {
 float g_duty = 0.0f;
 float g_fan = 0.0f;
+float g_heat = 0.0f;
 
 void writeRaw(float duty) {
   if (duty < 0.0f) duty = 0.0f;
@@ -25,6 +26,11 @@ void begin() {
   ledcAttachPin(PIN_PWM_GATE, PWM_CHANNEL);
   writeRaw(0.0f);
 
+  // Canal 1 divide o timer 0 com as lampadas: mesma frequencia e resolucao.
+  ledcSetup(HEAT_PWM_CHANNEL, PWM_FREQ_HZ, PWM_RESOLUTION);
+  ledcAttachPin(PIN_HEAT_GATE, HEAT_PWM_CHANNEL);
+  setHeater(0.0f);
+
   ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ_HZ, FAN_PWM_RESOLUTION);
   ledcAttachPin(PIN_FAN, FAN_PWM_CHANNEL);
   setFan(0.0f);
@@ -39,11 +45,23 @@ void setFan(float duty) {
 
 float fan() { return g_fan; }
 
+void setHeater(float duty) {
+  if (duty < 0.0f) duty = 0.0f;
+  if (duty > 1.0f) duty = 1.0f;
+  ledcWrite(HEAT_PWM_CHANNEL, static_cast<uint32_t>(duty * PWM_MAX));
+  g_heat = duty;
+}
+
+float heater() { return g_heat; }
+
 void setDuty(float duty) { writeRaw(duty); }
 
 float duty() { return g_duty; }
 
-void shutdown() { writeRaw(0.0f); }
+void shutdown() {
+  writeRaw(0.0f);
+  setHeater(0.0f);
+}
 
 void softStart(float target_duty) {
   const int steps = 20;

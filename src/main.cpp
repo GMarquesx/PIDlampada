@@ -6,20 +6,23 @@
  * temperatura (SENSOR_SOURCE) e a escala de tempo (SIM_TIME_SCALE).
  *
  * Saida serial em CSV para alimentar direto a analise em Python/Excel:
- *   t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan
+ *   t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan,heat
  *
  * Controle: PI com feedforward pelo modelo e separacao integral, em faixa
- * dividida - a mesma saida aquece com as lampadas (u > 0) ou exaure com o
- * cooler (u < 0). Display TM1637 mostra a temperatura medida.
+ * dividida - a mesma saida aquece (u > 0) ou exaure com o cooler (u < 0).
+ * O lado quente vai igual para as lampadas e para a manta de silicone da
+ * base: o brilho das lampadas continua mostrando o sinal de controle.
+ * Display TM1637 mostra a temperatura medida.
  *
  * Telemetria JSON via MQTT para o painel web (ver src/net.h).
  *
  * Comandos - pela serial OU pelo topico <base>/cmd, mesmo protocolo:
  *   s 45            setpoint em 45 degC (volta para malha fechada)
  *   k 0.06 0.0001   define Kp e Ki
- *   d 0.8           duty manual das lampadas (malha aberta)
+ *   d 0.8           duty manual de aquecimento: lampadas + manta (malha aberta)
  *   v 0.6           duty manual do cooler (malha aberta)
- *   r               ensaio de degrau (duty 100 %, malha aberta)
+ *   r               ensaio de degrau (malha aberta; 100 %, ou 40 % com a manta)
+ *   m 1 | m 0       liga / desliga a manta
  *   c               volta para malha fechada
  *   a 19            temperatura ambiente do modelo   [so simulacao]
  *   f bat | f atx   seleciona a fonte                [so simulacao]
@@ -50,6 +53,8 @@ static float g_setpoint = SETPOINT_DEFAULT_C;
 static float g_manual_duty = 0.0f;
 static float g_manual_fan = 0.0f;
 static float g_duty = 0.0f;            // duty aplicado ao MOSFET das lampadas
+static float g_heat = 0.0f;            // duty aplicado ao MOSFET da manta
+static bool  g_heater_on = HEATER_ENABLED_DEFAULT;
 static float g_fan = 0.0f;             // duty aplicado ao MOSFET do cooler
 static float g_model_time_s = 0.0f;
 static float g_last_pot = NAN;
@@ -57,6 +62,13 @@ static float g_last_pot = NAN;
 // Periodo de parede entre amostras: comprimido por SIM_TIME_SCALE no Wokwi.
 static const uint32_t kWallPeriodMs =
     static_cast<uint32_t>((SAMPLE_PERIOD_S * 1000.0f) / SIM_TIME_SCALE);
+
+// Ganho total do lado quente, usado pelo feedforward.
+static float heatingGain() {
+  return PLANT_GAIN_C + (g_heater_on ? PLANT_HEATER_GAIN_C : 0.0f);
+}
+
+static float stepTestDuty() { return g_heater_on ? STEP_TEST_DUTY_HEATER : 1.0f; }
 
 static const char* modeName(Mode m) {
   switch (m) {
@@ -115,6 +127,11 @@ static void handleCommand(const String& raw) {
       reply("# duty manual = %.2f", g_manual_duty);
       break;
 
+    case 'm':
+      g_heater_on = arg.toFloat() > 0.5f;
+      reply(g_heater_on ? "# manta ligada" : "# manta desligada (so lampadas)");
+      break;
+
     case 'v':
       g_manual_fan = constrain(arg.toFloat(), 0.0f, 1.0f);
       g_mode = Mode::OPEN_LOOP;
@@ -126,7 +143,7 @@ static void handleCommand(const String& raw) {
       g_split.reset();
       g_mode = Mode::STEP_TEST;
       g_model_time_s = 0.0f;
-      reply("# ensaio de degrau iniciado (duty = 1.00)");
+      reply("# ensaio de degrau iniciado (duty = %.2f)", stepTestDuty());
       break;
 
     case 'c':
@@ -155,13 +172,13 @@ static void handleCommand(const String& raw) {
       break;
 
     case '?':
-      reply("# modo=%s sp=%.1f Kp=%.5f Ki=%.7f duty=%.3f cooler=%.3f V=%.2f rede=%s",
-            modeName(g_mode), g_setpoint, pi.kp(), pi.ki(), g_duty, g_fan,
-            power::busVoltage(), net::online() ? "online" : "offline");
+      reply("# modo=%s sp=%.1f Kp=%.5f Ki=%.7f duty=%.3f manta=%s cooler=%.3f V=%.2f rede=%s",
+            modeName(g_mode), g_setpoint, pi.kp(), pi.ki(), g_duty, g_heater_on ? "on" : "off",
+            g_fan, power::busVoltage(), net::online() ? "online" : "offline");
       break;
 
     default:
-      reply("# comandos: s <C> | k <kp> <ki> | d <0-1> | v <0-1> | r | c | a <C> | f bat|atx | b | ?");
+      reply("# comandos: s <C> | k <kp> <ki> | d <0-1> | v <0-1> | m 0|1 | r | c | a <C> | f bat|atx | b | ?");
   }
 }
 
@@ -171,18 +188,25 @@ static void handleSerial() {
 }
 
 static void publishTelemetry(float temp, float duty_eff) {
-  char json[400];
+  // Dissipador: so a simulacao sabe a temperatura (o hardware nao mede).
+  char sink[16];
+  const float th = sensor::heaterSinkC();
+  if (isnan(th)) snprintf(sink, sizeof(sink), "null");
+  else           snprintf(sink, sizeof(sink), "%.1f", th);
+  char json[480];
   snprintf(json, sizeof(json),
            "{\"t\":%.0f,\"T\":%.2f,\"sp\":%.1f,\"u\":%.4f,\"ue\":%.4f,\"e\":%.2f,"
            "\"v\":%.2f,\"i\":%.3f,\"p\":%.2f,\"soc\":%.3f,\"src\":\"%s\",\"cut\":%d,"
            "\"mode\":\"%s\",\"kp\":%.5f,\"ki\":%.7f,\"amb\":%.1f,\"sim\":%d,"
-           "\"lamps\":%d,\"fan\":%.3f,\"up\":%lu}",
+           "\"lamps\":%d,\"fan\":%.3f,\"heat\":%.4f,\"hon\":%d,\"th\":%s,\"trip\":%d,"
+           "\"up\":%lu}",
            g_model_time_s, temp, g_setpoint, g_duty, duty_eff, g_setpoint - temp,
            power::busVoltage(), power::currentA(), power::powerW(),
            power::stateOfCharge(), power::onBattery() ? "BAT" : "ATX",
            power::cutoff() ? 1 : 0, modeName(g_mode), pi.kp(), pi.ki(),
            sensor::ambientC(), power::isSimulated() ? 1 : 0, LAMP_COUNT,
-           g_fan, (unsigned long)millis());
+           g_fan, g_heat, g_heater_on ? 1 : 0, sink, sensor::heaterTripped() ? 1 : 0,
+           (unsigned long)millis());
   net::publishTelemetry(json);
 }
 
@@ -209,7 +233,7 @@ void setup() {
 
   net::begin(handleCommand);
 
-  Serial.println("t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan");
+  Serial.println("t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan,heat");
 }
 
 void loop() {
@@ -229,16 +253,17 @@ void loop() {
   const float dt = SAMPLE_PERIOD_S;          // tempo de modelo, nao de parede
 
   // --- alimentacao do intervalo que passou ----------------------------------
-  power::step(g_duty, g_fan, dt);
+  power::step(g_duty, g_heat, g_fan, dt);
   const float vbus = power::busVoltage();
 
   // Potencia nas lampadas relativa a 15 W: carga resistiva, P ~ V^2.
   // A rotacao do cooler acompanha a tensao, aproximadamente linear.
   const float vr = vbus / VBAT_NOMINAL_V;
   const float duty_eff = g_duty * vr * vr;
+  const float heat_eff = g_heat * vr * vr;      // manta tambem e' resistiva
   const float fan_eff = g_fan * vr;
 
-  const float temp = sensor::readTemperatureC(duty_eff, fan_eff, dt);
+  const float temp = sensor::readTemperatureC(duty_eff, heat_eff, fan_eff, dt);
 
   // --- setpoint pelo potenciometro, so quando ele e' mexido ----------------
   // A primeira leitura so registra a posicao: a camara liga sempre em
@@ -253,7 +278,7 @@ void loop() {
     }
   }
 
-  // --- camada de seguranca em firmware (o KSD9700 e' a de hardware) -------
+  // --- camada de seguranca em firmware (TH1 e TH2 sao as de hardware) -----
   if (temp > TEMP_CUTOFF_C || isnan(temp) || temp < -40.0f) {
     if (g_mode != Mode::FAULT) reply("# FALHA: temperatura fora da faixa (%.1f C)", temp);
     g_mode = Mode::FAULT;
@@ -266,29 +291,36 @@ void loop() {
     case Mode::CLOSED_LOOP: {
       // Feedforward: o duty que o modelo diz segurar este setpoint.
       const float ff = SETPOINT_FEEDFORWARD
-          ? constrain((g_setpoint - PLANT_AMBIENT_C) / PLANT_GAIN_C, 0.0f, 1.0f)
+          ? constrain((g_setpoint - PLANT_AMBIENT_C) / heatingGain(), 0.0f, 1.0f)
           : 0.0f;
       g_split.update(pi.update(g_setpoint, temp, dt, ff), lamps, fan);
       break;
     }
     case Mode::OPEN_LOOP: lamps = g_manual_duty; fan = g_manual_fan; break;
-    case Mode::STEP_TEST: lamps = 1.0f; fan = 0.0f; break;
+    case Mode::STEP_TEST: lamps = stepTestDuty(); fan = 0.0f; break;
     // Falha: lampadas desligadas e cooler no maximo para tirar o calor.
     case Mode::FAULT:     lamps = 0.0f; fan = 1.0f; break;
   }
 
   // --- compensacao de tensao -----------------------------------------------
-  // lampadas: P ~ V^2  ->  duty * (12/V)^2      cooler: rpm ~ V  ->  duty * 12/V
+  // lampadas e manta: P ~ V^2 -> duty * (12/V)^2     cooler: rpm ~ V -> duty * 12/V
   if (VBAT_COMPENSATE && vbus > 6.0f) {
     const float ratio = VBAT_NOMINAL_V / vbus;
     lamps = constrain(lamps * ratio * ratio, 0.0f, 1.0f);
     fan = constrain(fan * ratio, 0.0f, 1.0f);
   }
 
-  if (g_mode == Mode::FAULT) actuator::shutdown();
-  else actuator::setDuty(lamps);
+  // A manta recebe o mesmo comando das lampadas (quando ligada).
+  const float heat = g_heater_on ? lamps : 0.0f;
+  if (g_mode == Mode::FAULT) {
+    actuator::shutdown();
+  } else {
+    actuator::setDuty(lamps);
+    actuator::setHeater(heat);
+  }
   actuator::setFan(fan);
   g_duty = (g_mode == Mode::FAULT) ? 0.0f : lamps;
+  g_heat = (g_mode == Mode::FAULT) ? 0.0f : heat;
   g_fan = fan;
 
   // --- display: leitura real da camara -------------------------------------
@@ -300,10 +332,10 @@ void loop() {
 
   digitalWrite(PIN_LED_ST, g_mode == Mode::FAULT ? HIGH : !digitalRead(PIN_LED_ST));
 
-  Serial.printf("%.0f,%.2f,%.1f,%.4f,%.2f,%.2f,%s,%.3f,%.1f,%.3f\r\n",
+  Serial.printf("%.0f,%.2f,%.1f,%.4f,%.2f,%.2f,%s,%.3f,%.1f,%.3f,%.4f\r\n",
                 g_model_time_s, temp, g_setpoint, g_duty,
                 g_setpoint - temp, vbus, modeName(g_mode),
-                power::currentA(), sensor::ambientC(), g_fan);
+                power::currentA(), sensor::ambientC(), g_fan, g_heat);
   // Brilho que as lampadas tem AGORA: duty novo com a tensao atual.
   publishTelemetry(temp, g_duty * vr * vr);
 

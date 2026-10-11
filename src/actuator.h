@@ -1,6 +1,6 @@
 #pragma once
 
-// Acionamento das lampadas e do cooler via LEDC/MOSFET.
+// Acionamento das lampadas, da manta e do cooler via LEDC/MOSFET.
 namespace actuator {
 
 void begin();
@@ -9,12 +9,17 @@ void begin();
 void setDuty(float duty);
 float duty();
 
+// Manta de silicone: duty em [0,1], ja compensado. Canal 1, mesmo timer
+// das lampadas.
+void setHeater(float duty);
+float heater();
+
 // Cooler: duty em [0,1]. A rotacao minima e a histerese ficam no
 // SplitRange; aqui e' so o PWM.
 void setFan(float duty);
 float fan();
 
-// Corta as lampadas imediatamente (falha de sensor, sobretemperatura).
+// Corta lampadas e manta imediatamente (falha de sensor, sobretemperatura).
 void shutdown();
 
 // Rampa de 0 ate o duty alvo, para limitar o inrush do filamento frio.

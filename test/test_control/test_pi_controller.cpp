@@ -197,6 +197,95 @@ void test_seg7_temperature_format() {
   TEST_ASSERT_EQUAL_HEX8(0x40, o[0]);
 }
 
+// ---------------------------------------------------------------- manta
+static PlantModel plant_com_manta() {
+  PlantModel p(640.0f, 30.0f, 25.0f, 3.0f);
+  p.setHeater(60.0f, 300.0f, 1.0f, 100.0f, 85.0f);
+  p.reset(25.0f);
+  return p;
+}
+
+// Ganho de regime: lampadas + manta somam (30 + 60 degC com duty 1).
+void test_heater_static_gain() {
+  PlantModel p = plant_com_manta();
+  for (int i = 0; i < 2000; ++i) p.step(0.3f, 0.3f, 0.0f, 60.0f);
+  TEST_ASSERT_FLOAT_WITHIN(0.2f, 25.0f + 0.3f * 90.0f, p.temperature());
+  // dissipador acima do ar em Kh*duty/r = 18 degC
+  TEST_ASSERT_FLOAT_WITHIN(0.2f, 18.0f, p.heaterTemperature() - p.temperature());
+}
+
+// O calor da manta chega atrasado: no primeiro minuto rende menos que as
+// lampadas, apesar de ser o dobro da potencia.
+void test_heater_is_delayed() {
+  PlantModel a(640.0f, 30.0f, 25.0f, 3.0f), b = plant_com_manta();
+  a.step(1.0f, 0.0f, 0.0f, 60.0f);
+  b.step(0.0f, 1.0f, 0.0f, 60.0f);
+  TEST_ASSERT_TRUE(b.temperature() - 25.0f < a.temperature() - 25.0f);
+  TEST_ASSERT_TRUE(b.heaterTemperature() > b.temperature());
+}
+
+// TH2: dissipador acima de 100 degC abre a manta; so fecha abaixo de 85.
+void test_heater_thermostat_trips() {
+  PlantModel p = plant_com_manta();
+  bool abriu = false;
+  for (int i = 0; i < 200 && !abriu; ++i) {
+    p.step(0.0f, 1.0f, 0.0f, 60.0f);
+    abriu = p.heaterTripped();
+  }
+  TEST_ASSERT_TRUE(abriu);
+  TEST_ASSERT_TRUE(p.heaterTemperature() > 90.0f);   // ja esfriando sem a manta
+  bool fechou = false;
+  float menor = p.heaterTemperature();
+  for (int i = 0; i < 200 && !fechou; ++i) {
+    p.step(0.0f, 1.0f, 0.0f, 60.0f);
+    fechou = !p.heaterTripped();
+    if (!fechou && p.heaterTemperature() < menor) menor = p.heaterTemperature();
+  }
+  TEST_ASSERT_TRUE(fechou);
+  TEST_ASSERT_TRUE(menor < 85.0f);                    // so religou abaixo de 85
+}
+
+// Malha fechada 25 -> 45 degC: com a manta chega pelo menos 1,5x mais rapido
+// que a Rev. B (so lampadas, sem dissipador),
+// sem passar de 1 degC do alvo, e alcanca 60 degC (so lampadas: ~55).
+static int minutos_ate(PlantModel& p, bool manta, float sp, float* pico) {
+  PIController pi(0.0637f, 0.000105f, -1.0f, 1.0f);
+  pi.setIntegralBand(3.0f);
+  SplitRange sr(0.30f, 0.10f, 0.04f, 4.0f);
+  const float k = manta ? 90.0f : 30.0f;
+  float lamps = 0, fan = 0, t = p.temperature();
+  int chegou = -1;
+  *pico = t;
+  for (int min = 0; min < 120; ++min) {
+    t = p.step(lamps, manta ? lamps : 0.0f, fan, 60.0f);
+    if (t > *pico) *pico = t;
+    if (chegou < 0 && t >= sp - 0.5f) chegou = min;
+    const float ff = (sp - 25.0f) / k;
+    sr.update(pi.update(sp, t, 60.0f, ff > 1.0f ? 1.0f : ff), lamps, fan);
+  }
+  return chegou;
+}
+
+void test_heater_speeds_up_warmup() {
+  PlantModel com = plant_com_manta(), sem(640.0f, 30.0f, 25.0f, 3.0f);
+  float pico_com, pico_sem;
+  const int t_com = minutos_ate(com, true, 45.0f, &pico_com);
+  const int t_sem = minutos_ate(sem, false, 45.0f, &pico_sem);
+  TEST_ASSERT_TRUE(t_com > 0 && t_sem > 0);
+  TEST_ASSERT_TRUE(t_com * 3 <= t_sem * 2);
+  TEST_ASSERT_TRUE(pico_com < 46.0f);
+  TEST_ASSERT_FALSE(com.heaterTripped());
+}
+
+void test_heater_reaches_60() {
+  PlantModel com = plant_com_manta(), sem(640.0f, 30.0f, 25.0f, 3.0f);
+  float pico_com, pico_sem;
+  TEST_ASSERT_TRUE(minutos_ate(com, true, 60.0f, &pico_com) > 0);
+  TEST_ASSERT_TRUE(minutos_ate(sem, false, 60.0f, &pico_sem) < 0);   // so lampadas nao chega
+  TEST_ASSERT_TRUE(pico_com < 61.0f);
+  TEST_ASSERT_TRUE(com.heaterTemperature() < 100.0f);                // TH2 nao abre
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_zero_error_gives_zero_output);
@@ -216,5 +305,10 @@ int main(int, char**) {
   RUN_TEST(test_feedforward_avoids_early_relight);
   RUN_TEST(test_integral_band_does_not_lock);
   RUN_TEST(test_seg7_temperature_format);
+  RUN_TEST(test_heater_static_gain);
+  RUN_TEST(test_heater_is_delayed);
+  RUN_TEST(test_heater_thermostat_trips);
+  RUN_TEST(test_heater_speeds_up_warmup);
+  RUN_TEST(test_heater_reaches_60);
   return UNITY_END();
 }

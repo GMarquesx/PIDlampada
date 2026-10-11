@@ -148,6 +148,34 @@
       "attrs": {
         "text": "Temperatura medida (TM1637)"
       }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "heat1",
+      "top": 140,
+      "left": -180,
+      "attrs": {
+        "color": "red",
+        "label": "MANTA"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r5",
+      "top": 140,
+      "left": -90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "txt_heat",
+      "top": 195,
+      "left": -235,
+      "attrs": {
+        "text": "Manta de silicone 12 V / 30 W - GPIO27\nmesmo comando das lampadas (canal 1)\nno hardware: Q3 IRLZ44N + TH2 KSD301"
+      }
     }
   ],
   "connections": [
@@ -213,7 +241,7 @@
     ],
     [
       "btn1:1.l",
-      "esp:D27",
+      "esp:D13",
       "purple",
       [
         "v0"
@@ -349,6 +377,30 @@
     ],
     [
       "fan1:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D27",
+      "r5:1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r5:2",
+      "heat1:A",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "heat1:C",
       "esp:GND.2",
       "black",
       [

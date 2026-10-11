@@ -6,14 +6,15 @@
  */
 
 // ---------------------------------------------------------------- pinagem
-// Mantida identica ao esquema eletrico Rev. A.
+// Igual ao esquema eletrico Rev. C (docs/hardware/Esquema_Eletrico_Rev_C.pdf).
 constexpr int PIN_PWM_GATE = 25;  // LEDC -> gate do IRLZ44N
 constexpr int PIN_TEMP     = 32;  // ADC1_CH4 <- LM35 (ou NTC no Wokwi)
 constexpr int PIN_SETPOINT = 33;  // ADC1_CH5 <- potenciometro (opcional)
 constexpr int PIN_V_SENSE  = 34;  // ADC1_CH6 <- divisor 100k/27k do barramento
 constexpr int PIN_PWR_OK   = 35;  // ADC1_CH7 <- PWR_OK da fonte ATX
 constexpr int PIN_LED_ST   = 2;   // LED de status (onboard na DevKit v1)
-constexpr int PIN_BTN_MODE = 27;  // botao (reservado)
+constexpr int PIN_BTN_MODE = 13;  // botao (reservado)
+constexpr int PIN_HEAT_GATE = 27; // LEDC -> gate do MOSFET da manta (Q3)
 constexpr int PIN_FAN      = 26;  // LEDC -> gate do MOSFET do cooler (Q2)
 constexpr int PIN_DISP_CLK = 18;  // TM1637 CLK
 constexpr int PIN_DISP_DIO = 19;  // TM1637 DIO
@@ -24,6 +25,10 @@ constexpr int   PWM_FREQ_HZ    = 500;
 constexpr int   PWM_RESOLUTION = 10;            // 0..1023
 constexpr int   PWM_MAX        = (1 << PWM_RESOLUTION) - 1;
 constexpr float SOFT_START_S   = 2.0f;          // rampa de partida (inrush)
+
+// Manta: canal 1, de proposito no MESMO timer das lampadas (par 0-1):
+// mesma frequencia e resolucao, e as duas recebem o mesmo comando.
+constexpr int   HEAT_PWM_CHANNEL = 1;
 
 // Cooler: 25 kHz fica acima da faixa audivel (sem chiado do motor).
 // Canal 2, nao 1: no LEDC do ESP32 os canais andam em pares (0-1, 2-3...)
@@ -53,6 +58,10 @@ constexpr float SAMPLE_PERIOD_S = 60.0f;        // periodo do PI (tau/10)
 
 // SIMC (analise/identificacao.ipynb) sobre o ensaio de exemplo.
 // PROVISORIO: refazer com o ensaio de degrau do hardware real.
+// Com a manta o ganho triplica (30 -> 90 degC), mas o dissipador acrescenta
+// ~300 s de atraso; em simulacao os mesmos ganhos continuam os melhores
+// (25 -> 45 degC em 8 min, pico de +0,7 degC). Quem muda e' o
+// feedforward, que usa o ganho total.
 constexpr float PI_KP = 0.0637f;                // 1/degC
 constexpr float PI_KI = 0.000105f;              // 1/(degC*s)   Ti = 606 s
 
@@ -77,6 +86,19 @@ constexpr float PLANT_AMBIENT_C = 25.0f;
 // Cooler a 100 % multiplica por (1 + G) a troca de calor com o ambiente.
 constexpr float PLANT_FAN_GAIN  = 3.0f;
 
+// Manta de silicone 12 V / 30 W colada sob um dissipador de aluminio
+// aletado (100 x 100 mm), com isolante embaixo. Ver plant_model.h.
+//   ganho  : 30 W / 0,5 W/K = 60 degC no ar com duty = 1
+//   tau_h  : ~150 J/K do dissipador / hA ~0,5 W/K = 300 s
+//   r      : hA / UA ~ 1
+// Estimativas de projeto: medir com o ensaio de degrau (r com a manta).
+constexpr float PLANT_HEATER_GAIN_C = 60.0f;
+constexpr float PLANT_HEATER_TAU_S  = 300.0f;
+constexpr float PLANT_HEATER_COUPLING = 1.0f;
+// TH2 (KSD301 NF no dissipador): abre a 100 degC, fecha de novo a ~85.
+constexpr float HEATER_TRIP_C  = 100.0f;
+constexpr float HEATER_RESET_C = 85.0f;
+
 // ------------------------------------------------------- carga (lampadas)
 constexpr int   LAMP_COUNT   = 3;
 constexpr float LAMP_POWER_W = 5.0f;            // W5W
@@ -87,6 +109,15 @@ constexpr float LAMP_R_EQ_OHM = (LAMP_V_NOM * LAMP_V_NOM) / (LAMP_COUNT * LAMP_P
 constexpr float BASE_POWER_W = 0.9f;
 // Ventoinha 12 V 40 x 40 mm tipica: ~0,1 A na rotacao maxima.
 constexpr float FAN_POWER_W  = 1.2f;
+
+// --------------------------------------------------------- carga (manta)
+constexpr bool  HEATER_ENABLED_DEFAULT = true;  // comando 'm 0' desliga
+constexpr float HEATER_POWER_W = 30.0f;
+constexpr float HEATER_R_OHM   = (LAMP_V_NOM * LAMP_V_NOM) / HEATER_POWER_W;   // 4,8 ohms
+// Ensaio de degrau com a manta: duty 1 levaria a ~115 degC em regime e
+// dispararia o corte de 68 degC antes de dar para medir a constante de
+// tempo. Com 0,4 o regime fica em ~61 degC.
+constexpr float STEP_TEST_DUTY_HEATER = 0.4f;
 
 // ---------------------------------------------------------------- display
 constexpr uint8_t DISPLAY_BRIGHTNESS = 4;       // 0..7

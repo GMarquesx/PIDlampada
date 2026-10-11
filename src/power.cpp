@@ -22,9 +22,9 @@ namespace {
   return (static_cast<float>(acc) / ADC_SAMPLES / ADC_MAX) * ADC_VREF_MV;
 }
 
-float estimatedCurrent(float duty, float fan, float v) {
+float estimatedCurrent(float duty, float heat, float fan, float v) {
   if (v < 0.5f) return 0.0f;
-  return duty * v / LAMP_R_EQ_OHM + (BASE_POWER_W + fan * FAN_POWER_W) / v;
+  return duty * v / LAMP_R_EQ_OHM + heat * v / HEATER_R_OHM + (BASE_POWER_W + fan * FAN_POWER_W) / v;
 }
 
 }  // namespace
@@ -40,19 +40,24 @@ void begin() {
 #endif
 }
 
-void step(float duty, float fan, float dt_s) {
+void step(float duty, float heat, float fan, float dt_s) {
 #if SENSOR_SOURCE == SENSOR_PLANT
   if (g_on_battery) {
-    g_v = g_batt.step(duty, LAMP_R_EQ_OHM, BASE_POWER_W + fan * FAN_POWER_W, dt_s);
+    // Lampadas e manta sao resistivas e chaveadas juntas: para a bateria
+    // equivalem a uma carga de condutancia duty/R_l + heat/R_h.
+    const float g = duty / LAMP_R_EQ_OHM + heat / HEATER_R_OHM;
+    const float base = BASE_POWER_W + fan * FAN_POWER_W;
+    g_v = g > 0.0f ? g_batt.step(1.0f, 1.0f / g, base, dt_s)
+                   : g_batt.step(0.0f, LAMP_R_EQ_OHM, base, dt_s);
     g_i = g_batt.current();
   } else {
     g_v = ATX_VOLTAGE_V;
-    g_i = estimatedCurrent(duty, fan, g_v);
+    g_i = estimatedCurrent(duty, heat, fan, g_v);
   }
 #else
   (void)dt_s;
   g_v = (readMillivolts(PIN_V_SENSE) / 1000.0f) * VBAT_DIVIDER;
-  g_i = estimatedCurrent(duty, fan, g_v);
+  g_i = estimatedCurrent(duty, heat, fan, g_v);
 #endif
 }
 

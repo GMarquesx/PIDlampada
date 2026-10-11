@@ -146,7 +146,7 @@ export class TrendChart {
     ctx.fillText('0', L.x0 - 6, YD(0));
     ctx.fillText('100', L.x0 - 6, YD(-1));
     ctx.textAlign = 'left';
-    ctx.fillText('▲ Lâmpadas  ·  ▼ Cooler  (%)', L.x0 + 2, L.duty.y0 - 10);
+    ctx.fillText('▲ Aquecimento  ·  ▼ Cooler  (%)', L.x0 + 2, L.duty.y0 - 10);
 
     // eixo x: minutos de modelo
     const d = this.data;
@@ -265,7 +265,7 @@ export class TrendChart {
       `<span>${fmt(s.t / 60, 0)} min</span><br>` +
       `<b>${fmt(s.T)} °C</b> medido<br>` +
       `${fmt(s.sp)} °C alvo<br>` +
-      `${fmt(s.u * 100, 0)} % lâmpadas<br>` +
+      `${fmt(s.u * 100, 0)} % aquecimento<br>` +
       `${fmt((s.fan ?? 0) * 100, 0)} % cooler`;
     this.tip.hidden = false;
     const x = Math.min(Math.max(X(s.t), 70), this.w - 70);

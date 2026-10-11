@@ -333,7 +333,7 @@ input[type="range"].range--fan::-moz-range-progress { background: var(--series-f
 }
 .gauge > :not(.gauge__icon) { grid-column: 2; }
 .gauge:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--line); }
-.gauge:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+.gauge:nth-child(-n+6) { border-bottom: 1px solid var(--line); }
 
 .gauge__label { font-size: 14px; color: var(--muted); }
 
@@ -381,6 +381,19 @@ input[type="range"].range--fan::-moz-range-progress { background: var(--series-f
 .icon-bulb.is-on { filter: drop-shadow(0 0 calc(2px + var(--lvl) * 7px) rgba(255, 178, 91, 0.75)); }
 .icon-bulb.is-on .icon-bulb__glass { stroke: var(--tungsten); }
 .icon-bulb.is-on .icon-bulb__fil { stroke: #FFF1DC; }
+
+.icon-heater { --lvl: 0; }
+.icon-heater__coil { transition: stroke 0.4s ease; }
+.icon-heater__waves { stroke: var(--tungsten); opacity: var(--lvl); transition: opacity 0.4s ease; }
+.icon-heater.is-on .icon-heater__coil { stroke: #ff7a3c; }
+.icon-heater.is-on { filter: drop-shadow(0 0 calc(1px + var(--lvl) * 6px) rgba(255, 122, 60, 0.7)); }
+.icon-heater.is-off { opacity: 0.45; }
+
+.icon-sink { --hot: 0; }
+.icon-sink__fins { transition: stroke 0.6s ease; }
+.icon-sink.is-warm .icon-sink__fins { stroke: color-mix(in srgb, var(--tungsten) calc(var(--hot) * 100%), var(--muted)); }
+.icon-sink__level { fill: color-mix(in srgb, var(--fault) calc(var(--hot) * 100%), var(--tungsten)); stroke: none; opacity: calc(0.25 + var(--hot) * 0.75); }
+.icon-sink.is-trip .icon-sink__fins { stroke: var(--fault); }
 
 .icon-fan__blade { fill: transparent; transition: fill 0.4s ease; }
 .icon-fan.is-on { stroke: var(--series-fan); }
@@ -438,6 +451,9 @@ input[type="range"].range--fan::-moz-range-progress { background: var(--series-f
 }
 .bar--batt span { background: var(--ink-2); }
 .bar--fan span { background: var(--series-fan); }
+.bar--heat span { background: var(--series-temp); }
+.bar--sink span { background: linear-gradient(90deg, var(--series-temp), var(--fault)); background-size: 100mm 100%; }
+.bar--sink[data-trip] span { background: var(--fault); }
 .bar--batt[data-low] span { background: var(--fault); }
 .bar[hidden] { display: none; }
 

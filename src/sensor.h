@@ -7,9 +7,14 @@ namespace sensor {
 void begin();
 
 // Temperatura em degC. No modo PLANT, a potencia aplicada no intervalo
-// anterior realimenta o modelo - por isso o duty das lampadas e o do
-// cooler entram como argumento (ja corrigidos pela tensao do barramento).
-float readTemperatureC(float effective_duty, float effective_fan, float dt_s);
+// anterior realimenta o modelo - por isso os duties das lampadas, da manta
+// e do cooler entram como argumento (ja corrigidos pela tensao).
+float readTemperatureC(float effective_duty, float effective_heat, float effective_fan, float dt_s);
+
+// Temperatura do dissipador da manta e estado do TH2. So existem na
+// simulacao: no hardware nao ha sensor no dissipador (NAN / false).
+float heaterSinkC();
+bool  heaterTripped();
 
 // Setpoint vindo do potenciometro; retorna NAN se nao houver pot ligado.
 float readSetpointPot();

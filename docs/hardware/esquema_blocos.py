@@ -1,5 +1,5 @@
 """
-Blocos do esquema eletrico Rev. B - PIDlampada (SchemDraw).
+Blocos do esquema eletrico - PIDlampada (SchemDraw). Revisao atual: C.
 
 Cada bloco funcional e' um desenho separado, salvo como SVG. A folha
 (esquema_rev_b.py) posiciona todos na mesma escala - 1 unidade SchemDraw
@@ -42,12 +42,17 @@ class RevMark(elm.Element):
         self.params['drop'] = (0, 0)
 
 
-def rev(d, xy):
-    d += RevMark().at(xy).theta(0)
+def rev(d, xy, letra='B'):
+    # marcadores e textos nao mexem na posicao corrente do desenho
+    here, theta = d.here, d.theta
+    d += RevMark(letra).at(xy).theta(0)
+    d.here, d.theta = here, theta
 
 
 def txt(d, xy, s, halign='left', size=FS_NOTA, color=NOTA):
+    here, theta = d.here, d.theta
     d += elm.Label().at(xy).label(s, fontsize=size, color=color, halign=halign)
+    d.here, d.theta = here, theta
 
 
 def ref(d, xy, s, halign='left'):
@@ -73,7 +78,8 @@ def bloco_entrada():
     d = novo()
     # chave de 2 posicoes: comum a direita, ATX em cima, bateria embaixo
     d += (sw := elm.SwitchSpdt2().at((7.0, 21.0)).left())
-    txt(d, (6.6, 22.4), 'SW1', halign='center', size=17, color='black')
+    txt(d, (6.6, 22.4), 'SW1  10 A', halign='center', size=17, color='black')
+    rev(d, (4.6, 22.05), 'C')
     ax, ay = sw.c          # entrada ATX
     bx, by = sw.b          # entrada bateria
 
@@ -83,15 +89,17 @@ def bloco_entrada():
 
     # BT1: pack 3S - o polo + sobe e entra pela esquerda na outra posicao
     d += (bat := elm.Battery().at((2.6, by - 3.6)).up().length(2.6))
-    ref(d, (2.0, by - 2.3), T('BT1\n3S 18650\n12,6 V máx.', 'BT1\n3S 18650\n12.6 V max.'), halign='right')
+    ref(d, (2.0, by - 2.1), T('BT1  3S 18650\n12,6 V máx.\nBMS ≥ 8 A', 'BT1  3S 18650\n12.6 V max.\nBMS ≥ 8 A'), halign='right')
     d += elm.Line().at(bat.end).to((2.6, by))
     d += elm.Line().at((2.6, by)).to((bx, by))
     d += elm.Ground().at(bat.start)
 
     # comum -> F1 -> D1 -> no protegido
     d += elm.Line().at(sw.a).right().length(0.6)
-    d += elm.Fuse().right().length(2.8).label(T('F1\n3 A retard.', 'F1\n3 A slow'), loc='top', ofst=0.3)
-    d += elm.Schottky().right().length(2.8).label('D1  SS34', loc='top', ofst=0.3)
+    d += (f1 := elm.Fuse().right().length(2.8).label(T('F1\n6,3 A retard.', 'F1\n6.3 A slow'), loc='top', ofst=0.3))
+    d += (d1 := elm.Schottky().right().length(2.8).label('D1  SB560', loc='top', ofst=0.3))
+    rev(d, (f1.center[0] - 0.4, f1.center[1] - 1.1), 'C')
+    rev(d, (d1.center[0] - 0.4, d1.center[1] - 1.1), 'C')
     d += elm.Line().right().length(0.8)
     d += (na := elm.Dot())
 
@@ -164,14 +172,14 @@ def bloco_controlador():
     d = novo()
     pinos = [('GPIO19', 'DISP_DIO'), ('GPIO18', 'DISP_CLK'), ('GPIO35', 'PWR_OK_S'),
              ('GPIO34', 'V_SENSE'), ('GPIO32', 'TEMP_S'), ('GPIO26', 'FAN_GATE'),
-             ('GPIO25', 'PWM_GATE')]
+             ('GPIO25', 'PWM_GATE'), ('GPIO27', 'HEAT_GATE')]
     n = len(pinos)
     pins = [elm.IcPin(name=p, side='right', slot=f'{i + 1}/{n}') for i, (p, _) in enumerate(pinos)]
     pins += [elm.IcPin(name='GND', side='left', slot='1/4'),
              elm.IcPin(name='GND', side='left', slot='2/4'),
              elm.IcPin(name='3V3', side='left', slot='3/4'),
              elm.IcPin(name='VIN', side='left', slot='4/4')]
-    esp = elm.Ic(pins=pins, size=(5.6, 12.0), plblofst=0.3)
+    esp = elm.Ic(pins=pins, size=(5.6, 13.4), plblofst=0.3)
     d += (esp := esp.at((0, 0)).right().label('U2  ESP32 DevKit v1', loc='top', ofst=0.4))
 
     d += elm.Line().at(esp.VIN).left().length(1.6)
@@ -190,9 +198,11 @@ def bloco_controlador():
         tag(d, 'right', rede)
         if pino in novos:
             rev(d, (p[0] + 1.4 + TAG_W + 0.35, p[1] - 0.3))
+        if pino == 'GPIO27':
+            rev(d, (p[0] + 1.4 + TAG_W + 0.35, p[1] - 0.3), 'C')
     txt(d, (esp.inL1[0] - 1.6, esp.inL1[1] - 2.7),
-        T('GPIO2: LED de status da própria placa.\nGPIO33 e GPIO27: reservados, sem ligação.',
-          'GPIO2: on-board status LED.\nGPIO33 and GPIO27: reserved, not connected.'))
+        T('GPIO2: LED de status da própria placa.\nGPIO33 e GPIO13: reservados, sem ligação.',
+          'GPIO2: on-board status LED.\nGPIO33 and GPIO13: reserved, not connected.'))
     return d
 
 
@@ -277,10 +287,16 @@ def bloco_potencia():
     XL, XR, YT = 10.4, 16.0, 0.0
     d += elm.Vdd().at((0, YT)).label('+12 V PROT', ofst=0.15)
     d += elm.Line().at((0, YT)).right().length(1.8)
-    d += elm.Switch(nc=True).right().length(3.4).label(T('TH1  KSD9700\n70 °C · NF', 'TH1  KSD9700\n70 °C · NC'),
-                                                loc='top', ofst=0.35)
+    d += (th1 := elm.Switch(nc=True).right().length(3.4).label(T('TH1  KSD301\n70 °C · NF · 10 A', 'TH1  KSD301\n70 °C · NC · 10 A'),
+                                                loc='top', ofst=0.35))
+    rev(d, (th1.center[0] - 0.4, th1.center[1] - 1.15), 'C')
     d += elm.Line().right().to((XL, YT))
     d += elm.Dot()
+    # depois do TH1 tambem sai a alimentacao da manta (bloco [9])
+    XT = 7.4
+    d += elm.Dot().at((XT, YT))
+    d += elm.Line().at((XT, YT)).down().length(2.2)
+    tag(d, 'down', '+12V_TH')
 
     for i, y in enumerate([YT, YT - 2.8, YT - 5.6]):
         d += elm.Lamp().at((XL, y)).right().to((XR, y)).label(f'EL{i + 1}', loc='top', ofst=0.3)
@@ -390,6 +406,38 @@ def bloco_display():
     return d
 
 
+# ---------------------------------------------------------------------
+# [9] MANTA DE SILICONE (base) - carga resistiva, mesmo comando das lampadas
+# ---------------------------------------------------------------------
+def bloco_manta():
+    d = novo()
+    X = 0.0
+    tag(d, 'down', '+12V_TH', at=(X, 2.4))
+    d += (th2 := elm.Switch(nc=True).at((X, 2.4 - TAG_W)).down().length(2.4))
+    ref(d, (X + 0.55, th2.center[1]), T('TH2  KSD301\n100 °C · NF\nno dissipador', 'TH2  KSD301\n100 °C · NC\non heatsink'))
+    rev(d, (X - 1.6, th2.center[1] + 0.6), 'C')
+    d += (h1 := elm.Resistor().down().length(2.6))
+    ref(d, (X + 0.55, h1.center[1]), T('H1  manta silicone\n12 V · 30 W · 4,8 Ω', 'H1  silicone heater\n12 V · 30 W · 4.8 Ω'))
+    d += (q3 := elm.NFet(bulk=False).right().reverse().anchor('drain'))
+    ref(d, (X + 1.1, q3.center[1] - 0.2), 'Q3  IRLZ44N')
+    d += elm.Line().at(q3.source).down().length(0.8)
+    d += elm.Ground()
+    gx, gy = q3.gate
+    d += elm.Line().at(q3.gate).left().to((gx - 1.2, gy))
+    d += (ng := elm.Dot())
+    d += elm.Resistor().left().length(2.8).label('R12  150 Ω', loc='top', ofst=0.3)
+    d += elm.Line().left().length(0.6)
+    tag(d, 'left', 'HEAT_GATE')
+    d += elm.Resistor().at(ng.center).down().length(2.6)
+    ref(d, (ng.center[0] - 0.45, ng.center[1] - 1.3), 'R13\n10 kΩ', halign='right')
+    d += elm.Ground()
+    txt(d, (X + 6.6, 1.6), T('Carga RESISTIVA: sem diodo de\nroda livre. Mesmo comando das\nlâmpadas (LEDC canal 1, mesmo\ntimer do canal 0).',
+                            'RESISTIVE load: no flyback\ndiode. Same command as the\nlamps (LEDC channel 1, same\ntimer as channel 0).'))
+    txt(d, (X + 6.6, -3.6), T('Manta colada sob dissipador\naletado; isolante embaixo\nprotege a base (nota 9).',
+                             'Heater bonded under a finned\nheatsink; insulation below\nprotects the base (note 9).'))
+    return d
+
+
 def blocos():
     return {
         '1': (T('ENTRADA · SELEÇÃO DE FONTE · PROTEÇÃO', 'INPUT · SOURCE SELECTION · PROTECTION'), bloco_entrada),
@@ -400,6 +448,7 @@ def blocos():
         '6': (T('POTÊNCIA · LÂMPADAS (LOW-SIDE)', 'POWER STAGE · LAMPS (LOW-SIDE)'), bloco_potencia),
         '7': (T('COOLER DE EXAUSTÃO (LOW-SIDE)', 'EXHAUST FAN (LOW-SIDE)'), bloco_cooler),
         '8': (T('DISPLAY DE TEMPERATURA', 'TEMPERATURE DISPLAY'), bloco_display),
+        '9': (T('MANTA DE AQUECIMENTO (LOW-SIDE)', 'BASE HEATER (LOW-SIDE)'), bloco_manta),
     }
 
 

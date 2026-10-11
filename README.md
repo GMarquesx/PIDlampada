@@ -1,11 +1,16 @@
 # PIDlampada — Camara Termica Compacta com Controle PWM
 
-Camara termica de ~100x100x80 mm aquecida por tres lampadas automotivas W5W,
-com controlador PI embarcado em ESP32 atuando por PWM atraves de um MOSFET
-IRLZ44N. O brilho das lampadas **e** a variavel manipulada: quanto mais aceso,
-mais frio esta o interior. Um cooler de exaustao joga o ar quente para fora
-quando o setpoint fica abaixo da temperatura medida, e um display de 7
-segmentos (TM1637) mostra a leitura na propria camara.
+Camara termica de ~100x100x80 mm aquecida por tres lampadas automotivas W5W
+e por uma manta de silicone de 30 W na base, com controlador PI embarcado em
+ESP32 atuando por PWM atraves de MOSFETs IRLZ44N. Lampadas e manta recebem o
+mesmo comando, entao o brilho das lampadas **e** o sinal de controle: quanto
+mais aceso, mais frio esta o interior. Um cooler de exaustao joga o ar quente
+para fora quando o setpoint fica abaixo da temperatura medida, e um display de
+7 segmentos (TM1637) mostra a leitura na propria camara.
+
+Componentes baratos e faceis de achar, mas com controle de estufa de verdade:
+feedforward, faixa dividida aquecer/esfriar, duas protecoes termicas em
+hardware e corte por firmware.
 
 **Painel ao vivo:** https://gmarquesx.github.io/PIDlampada/ — abre no celular,
 mostra a camara em 3D com as lampadas no brilho real do PWM e permite mudar o
@@ -23,6 +28,7 @@ semestre / 2026.
 - [Ambientes de build](#ambientes-de-build)
 - [Simulando no Wokwi](#simulando-no-wokwi)
 - [Cooler e controle em faixa dividida](#cooler-e-controle-em-faixa-dividida)
+- [Manta de silicone na base](#manta-de-silicone-na-base)
 - [Painel web](#painel-web)
 - [Protocolo serial e MQTT](#protocolo-serial-e-mqtt)
 - [Ensaio de degrau](#ensaio-de-degrau)
@@ -57,7 +63,7 @@ PIDlampada/
 ├── diagram.json                circuito do Wokwi
 ├── wokwi.toml                  aponta para o firmware do env "wokwi"
 └── docs/
-    ├── hardware/               esquemas Rev. A e Rev. B, proposta (PDF/SVG/script)
+    ├── hardware/               esquemas Rev. A, B e C (atual), proposta, scripts
     ├── ensaios/                CSVs capturados da serial
     └── decisoes/               ADRs
 ```
@@ -121,12 +127,13 @@ O circuito do Wokwi tem:
 | Display TM1637 4 digitos | CLK GPIO18, DIO GPIO19, VCC 3V3 | a temperatura lida, `43.2C`; `Err` em falha, `bAt` com bateria esgotada |
 | LED "LAMPADAS" | GPIO25 | brilho = PWM das lampadas |
 | LED azul "COOLER" | GPIO26 | brilho = PWM do cooler |
+| LED vermelho "MANTA" | GPIO27 | brilho = PWM da manta (o mesmo das lampadas) |
 | Potenciometro | GPIO33 | setpoint |
 
 **Limite do Wokwi:** ele simula logica digital, nao circuito analogico — nao
 tem MOSFET, diodo, capacitor nem motor DC. Por isso o cooler aparece como LED
 e as protecoes (diodo de roda livre, capacitores de desacoplamento, filtro do
-LM35) estao no esquema Rev. B, em [`docs/hardware/`](docs/hardware/). O
+LM35, termostatos) estao no esquema Rev. C, em [`docs/hardware/`](docs/hardware/). O
 firmware e' o mesmo nos dois casos.
 
 ## Cooler e controle em faixa dividida
@@ -174,6 +181,50 @@ Resultado na planta simulada (tau 640 s, K 30 degC), descida de 45 para 32 degC:
 A partida a frio continua chegando a 45 degC em cerca de 15 min, com pico de
 45,08 degC, e a resposta a perturbacao de ambiente nao mudou.
 
+## Manta de silicone na base
+
+As lampadas sozinhas dao 15 W: a camara chega a cerca de ambiente + 30 degC e
+leva ~15 min para ir de 25 a 45 degC. A Rev. C acrescenta uma **manta de
+silicone 12 V / 30 W** (100 x 100 mm, a mesma usada em mesa de impressora 3D)
+na base, montada assim, de baixo para cima:
+
+```
+  base de acrilico  ->  isolante de fibra ceramica  ->  manta H1  ->  dissipador aletado  ->  ar
+```
+
+- **Dissipador de aluminio aletado por cima:** espalha o calor por igual e
+  troca com o ar por uma area varias vezes maior que a da manta. Sem ele, uma
+  placa lisa de 10 x 10 cm precisaria ficar ~100 degC acima do ar para passar
+  os mesmos watts.
+- **Isolante embaixo:** o calor vai para cima, e a base de acrilico fica fria.
+- **Mesma fonte de 12 V, sem tensao de rede.** Uma resistencia tubular de
+  127/220 V passa de 300 degC na superficie e derreteria o acrilico (amolece
+  perto de 80 degC).
+- **Mesmo comando das lampadas** (GPIO27, LEDC canal 1, que divide o timer com
+  o canal 0). O PI nao muda: so o feedforward passa a usar o ganho somado,
+  30 + 60 = 90 degC. O comando `m 0` desliga a manta para comparar.
+- **Duas protecoes termicas:** TH1 (KSD301 70 degC, no ar) corta lampadas e
+  manta; TH2 (KSD301 100 degC, no dissipador) corta so a manta. O firmware
+  ainda corta tudo acima de 68 degC.
+
+O teto continua sendo **60 degC de setpoint**: quem limita e' o acrilico, nao
+a potencia. O que a manta muda e' a velocidade e a folga com ambiente frio.
+
+Resultado na planta simulada (`lib/control/plant_model.h`, dois nos: ar e
+dissipador, com tau do dissipador de 300 s), mesmos ganhos do PI:
+
+| Ensaio (tempo ate 0,5 degC do alvo) | So lampadas (Rev. B) | Com manta (Rev. C) |
+|--------|----------------------|--------------------|
+| 25 -> 45 degC | 15 min | **8 min**, pico 45,7 degC |
+| 45 -> 60 degC | nao chega (para em ~55) | **8 min**, pico 60,6 degC |
+| Partida a frio com ambiente a 19 degC, ate 45 | 36 min | 10 min |
+| Dissipador no pior caso (alvo 60) | — | 89 degC (TH2 abre a 100) |
+
+O ganho e o atraso da manta sao estimativas: `PLANT_HEATER_GAIN_C`,
+`PLANT_HEATER_TAU_S` e `PLANT_HEATER_COUPLING` em `include/config.h` devem
+sair do ensaio de degrau no hardware. Com a manta o ensaio usa duty 0,4 (com
+1,0 a camara iria a ~115 degC e o corte de 68 degC dispararia antes).
+
 ## Painel web
 
 Pagina estatica em [`web/`](web/), publicada pelo workflow `painel` no GitHub
@@ -183,17 +234,22 @@ Pages a cada push que mexe nela.
   potencia entregue — vermelho-alaranjado fraco em pouca potencia, branco
   quente no maximo, como um filamento de verdade. O fundo da pagina esquenta
   junto.
-- Na cena tambem: o cooler na parede girando na rotacao do PWM, o fluxo de ar
-  (quente saindo pelo cooler, frio entrando pelas fendas do outro lado) e o
-  modulo TM1637 na frente da base mostrando exatamente o que o firmware mostra.
-- Leituras com icones vivos: a lampada acende com o PWM, a ventoinha gira, a
-  onda de PWM tem o duty real, o ponteiro marca a potencia, a bateria esvazia
-  e o termometro sobe.
+- Na cena tambem: o cooler na parede girando na proporcao do PWM, com a
+  etiqueta de % e rpm estimado; o caminho do ar (entra frio pelas fendas,
+  atravessa a camara esquentando e sai pelo cooler); a manta com o dissipador
+  aletado no piso, que muda de cor com a temperatura e solta ar quente para
+  cima; o modulo TM1637 mostrando exatamente o que o firmware mostra; e a
+  ESP32 DevKit v1 numa protoboard na mesa, com os jumpers e o LED azul
+  (GPIO2) piscando a cada amostra.
+- Leituras com icones vivos: a lampada acende com o PWM, a resistencia da
+  manta brilha, a ventoinha gira, o dissipador esquenta, a onda de PWM tem o
+  duty real, o ponteiro marca a potencia, a bateria esvazia e o termometro sobe.
 - Setpoint por slider, historico com temperatura e alvo, painel de atuadores
   (lampadas para cima, cooler para baixo), modo manual com lampadas e cooler
   separados, ensaio de degrau.
-- Controles de simulacao: trocar ATX por bateria, "abrir a janela" (ambiente
-  cai 6 degC) e recarregar a bateria. Bons para mostrar o controle reagindo.
+- Controles de simulacao: trocar ATX por bateria, ligar/desligar a manta,
+  "abrir a janela" (ambiente cai 6 degC) e recarregar a bateria. Bons para
+  mostrar o controle reagindo.
 - Modo demonstracao (`?demo=1`): a mesma fisica e o mesmo PI rodando no
   navegador, para apresentar sem o Wokwi aberto. Fica marcado como tal.
 
@@ -218,9 +274,10 @@ Os comandos sao os mesmos pela serial (115200 baud) e pelo topico
 |---------|--------|
 | `s 45` | setpoint em 45 degC (volta para malha fechada) |
 | `k 0.0637 0.000105` | define Kp e Ki em tempo de execucao |
-| `d 0.8` | duty manual das lampadas, malha aberta |
+| `d 0.8` | duty manual de aquecimento (lampadas + manta), malha aberta |
+| `m 1` / `m 0` | liga / desliga a manta |
 | `v 0.5` | cooler manual (0 a 1), malha aberta |
-| `r` | ensaio de degrau (duty 100 %, cooler parado, zera o tempo) |
+| `r` | ensaio de degrau (cooler parado, zera o tempo; duty 100 %, ou 40 % com a manta) |
 | `c` | volta para malha fechada |
 | `a 19` | temperatura ambiente do modelo — so simulacao |
 | `f bat` / `f atx` | fonte de alimentacao — so simulacao |
@@ -230,7 +287,7 @@ Os comandos sao os mesmos pela serial (115200 baud) e pelo topico
 Saida serial em CSV, uma linha por amostra:
 
 ```
-t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan
+t_s,T_c,setpoint_c,duty,erro_c,vbat_v,modo,i_a,amb_c,fan,heat
 ```
 
 Telemetria MQTT em `pidlampada/<id>/telemetria`, um JSON por amostra:
@@ -239,12 +296,16 @@ Telemetria MQTT em `pidlampada/<id>/telemetria`, um JSON por amostra:
 {"t":900,"T":45.03,"sp":45.0,"u":0.6812,"ue":0.6812,"e":-0.03,"v":12.00,
  "i":0.927,"p":11.12,"soc":1.000,"src":"ATX","cut":0,"mode":"PI",
  "kp":0.06370,"ki":0.0001050,"amb":25.0,"sim":1,"lamps":3,"fan":0.000,
+ "heat":0.2380,"hon":1,"th":59.8,"trip":0,
  "up":15342}
 ```
 
 `u` e' o duty aplicado; `ue` e' a potencia relativa a 15 W, ja corrigida pela
 tensao (`u * (V/12)^2`) — e' o que define o brilho das lampadas no painel.
 `fan` e' o PWM do cooler (0 a 1), ja com a compensacao de tensao `x 12/V`.
+`heat` e' o PWM da manta, `hon` diz se ela esta ligada; `th` (temperatura do
+dissipador) e `trip` (TH2 aberto) so existem na simulacao - no hardware `th`
+vem `null`, porque nao ha sensor no dissipador.
 
 O potenciometro so assume o setpoint quando e' mexido mais de 0,5 degC. Sem
 essa histerese ele sobrescreveria, a cada amostra, o valor vindo do painel.
@@ -275,13 +336,14 @@ valores **medidos no hardware** e ressintonize.
 pio test -e native
 ```
 
-17 testes. Cobrem o PI (proporcional puro, saturacao, anti-windup), o ganho
+22 testes. Cobrem o PI (proporcional puro, saturacao, anti-windup), o ganho
 estatico do modelo, a convergencia da malha fechada, a bateria (tensao em
 vazio, queda pela resistencia interna, balanco de energia e desarme do BMS),
 o cooler (esfria mais rapido, nunca liga junto com as lampadas, histerese,
 descida de setpoint mais rapida), o feedforward, a separacao da integral sem
-travar com modelo errado e o formato do display. Rodam tambem no CI a cada
-push.
+travar com modelo errado, o formato do display e a manta (ganho somado,
+atraso do dissipador, TH2 abrindo e fechando com histerese, aquecimento mais
+rapido e alcance de 60 degC). Rodam tambem no CI a cada push.
 
 ## Analise e sintonia
 
@@ -317,11 +379,12 @@ mesma amostragem, mesma saturacao, mesmo anti-windup.
 
 Esquema eletrico, proposta e BOM em [`docs/hardware/`](docs/hardware/).
 
-Pinagem (esquema Rev. B):
+Pinagem (esquema Rev. C):
 
 | Pino | Rede | Funcao |
 |------|------|--------|
 | GPIO25 | PWM_GATE | LEDC ch0, 500 Hz -> gate do Q1 IRLZ44N (lampadas) |
+| GPIO27 | HEAT_GATE | LEDC ch1 (timer das lampadas) -> gate do Q3 (manta) |
 | GPIO26 | FAN_GATE | LEDC ch2, 25 kHz -> gate do Q2 (cooler) |
 | GPIO18 | DISP_CLK | CLK do TM1637 |
 | GPIO19 | DISP_DIO | DIO do TM1637 |
@@ -330,9 +393,9 @@ Pinagem (esquema Rev. B):
 | GPIO34 | V_SENSE | ADC1_CH6 <- divisor 100k/27k |
 | GPIO35 | PWR_OK_S | ADC1_CH7 <- PWR_OK da ATX |
 | GPIO2 | LED_ST | LED de status (o da placa) |
-| GPIO27 | BTN_MODE | botao (reservado, sem funcao ainda) |
+| GPIO13 | BTN_MODE | botao (reservado, sem funcao ainda; era GPIO27) |
 
-Protecoes da Rev. B, e por que cada uma existe:
+Protecoes (Rev. B e C), e por que cada uma existe:
 
 | Peca | Onde | Por que |
 |------|------|---------|
@@ -342,7 +405,11 @@ Protecoes da Rev. B, e por que cada uma existe:
 | R11 75 ohm + C9 1 uF | na saida do LM35 | filtro recomendado pela TI: o LM35 oscila com carga capacitiva direta |
 | C10 100 nF | no VCC do TM1637 | desacoplamento do display |
 | R9 100 ohm + R10 10 k | gate do Q2 | limita o pico de corrente do gate e garante Q2 desligado no boot |
-| Cooler fora do TH1 | KSD9700 so corta as lampadas | em superaquecimento a ventoinha **tem** que continuar girando |
+| Cooler fora do TH1 | TH1 so corta lampadas e manta | em superaquecimento a ventoinha **tem** que continuar girando |
+| TH1 KSD301 10 A | no ar, corta lampadas e manta (+12V_TH) | com a manta passam ~3,75 A: o KSD9700 da Rev. B nao aguenta |
+| TH2 KSD301 100 degC | no dissipador, so a manta | se o sensor soltar ou o ar parar, o dissipador nao passa de 100 degC |
+| F1 6,3 A, D1 SB560, SW1 10 A | entrada | corrente maxima subiu de ~1,5 para ~4 A |
+| R12 150 ohm + R13 10 k | gate do Q3 | mesmo papel de R6/R7 no Q1 |
 
 O TM1637 vai no **3V3**, nao no 5 V: os pinos do ESP32 nao toleram 5 V.
 
@@ -373,9 +440,12 @@ Copy-Item include\secrets.example.h include\secrets.h
 6. **Ganho do cooler estimado.** `PLANT_FAN_GAIN = 3` (ventilacao no maximo
    quadruplica a troca de calor) e' estimativa. Medir no hardware: degrau de
    cooler 100 % com lampadas apagadas a partir do regime.
-7. **Cooler no Wokwi e' um LED.** O simulador nao tem motor DC nem MOSFET;
+7. **Manta estimada.** Ganho (60 degC), atraso do dissipador (300 s) e
+   acoplamento com o ar sao estimativas de projeto. O dissipador escolhido
+   muda muito o atraso: medir com degrau de 0,4 e ajustar `config.h`.
+8. **Cooler e manta no Wokwi sao LEDs.** O simulador nao tem motor DC nem MOSFET;
    a parte analogica (diodo de roda livre, capacitores) so existe no esquema.
-8. **Planta simulada sem atraso de transporte.** O modelo do Wokwi e' de 1a
+9. **Planta simulada sem atraso de transporte.** O modelo do Wokwi e' de 1a
    ordem pura; o hardware real tera atraso (filamento e sensor), entao o
    simulador parece mais estavel do que a bancada vai ser.
 

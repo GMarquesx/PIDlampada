@@ -44,7 +44,7 @@ const tableRows = [];
 
 // A cena 3D carrega em paralelo: se o CDN do three.js falhar, o resto segue.
 import('./scene.js')
-  .then(({ ChamberScene }) => { scene = new ChamberScene($('scene')); if (last) applyScene(last); })
+  .then(({ ChamberScene }) => { scene = new ChamberScene($('scene')); if (params.has('debug')) window.__scene = scene; if (last) applyScene(last); })
   .catch((err) => {
     $('scene').innerHTML = '<p class="hint" style="padding:24px">Não foi possível carregar a vista 3D. As leituras abaixo continuam funcionando.</p>';
     log(`# vista 3D indisponível: ${err.message}`);
@@ -127,6 +127,8 @@ function applyScene(d) {
   scene?.setState({
     ue: d.ue ?? d.u, T: d.T, amb: d.amb ?? 25, fault: d.mode === 'FALHA' || d.cut === 1,
     fan: d.fan ?? 0, display: cells, displayKey: cellsKey(cells),
+    heat: (d.heat ?? 0) * (d.ue != null && d.u > 0 ? d.ue / d.u : 1), hon: d.hon ?? 0,
+    sink: d.th ?? null, beat: d.t,
   });
 }
 
@@ -170,6 +172,23 @@ function renderIcons(d) {
   bulb.style.setProperty('--lvl', (d.ue ?? lamps).toFixed(3));
   bulb.classList.toggle('is-on', lamps > 0.01);
 
+  const heater = document.querySelector('.icon-heater');
+  const heat = d.cut ? 0 : (d.heat ?? 0);
+  heater.style.setProperty('--lvl', heat.toFixed(3));
+  heater.classList.toggle('is-on', heat > 0.01);
+  heater.classList.toggle('is-off', d.hon === 0 || !!d.trip);
+
+  if (d.th != null) {
+    const sinkIcon = document.querySelector('.icon-sink');
+    const hot = Math.max(0, Math.min(1, (d.th - 25) / 75));
+    sinkIcon.style.setProperty('--hot', hot.toFixed(3));
+    sinkIcon.classList.toggle('is-warm', d.th > 30);
+    sinkIcon.classList.toggle('is-trip', !!d.trip);
+    const lvl = 1.6 + 12 * hot;
+    $('i-sink').setAttribute('height', lvl.toFixed(2));
+    $('i-sink').setAttribute('y', (30.2 - lvl).toFixed(2));
+  }
+
   const fan = d.cut ? 0 : (d.fan ?? 0);
   fanIcon.target = fan;
   document.querySelector('.icon-fan').classList.toggle('is-on', fan > 0.01);
@@ -183,8 +202,8 @@ function renderIcons(d) {
   $('i-pwm').setAttribute('d', pwmPath(lamps));
   document.querySelector('.icon-pwm').classList.toggle('is-on', lamps > 0.01);
 
-  // ponteiro: 0 W a -80 graus, 20 W a +80 graus
-  const ang = -80 + Math.min(1, Math.max(0, d.p / 20)) * 160;
+  // ponteiro: 0 W a -80 graus, 50 W a +80 graus (lampadas + manta + cooler)
+  const ang = -80 + Math.min(1, Math.max(0, d.p / 50)) * 160;
   $('i-needle').style.transform = `rotate(${ang.toFixed(1)}deg)`;
 
   const src = $('i-src');
@@ -203,10 +222,10 @@ function renderIcons(d) {
 }
 
 const MODE_TEXT = {
-  PI: 'O controlador PI aquece com as lâmpadas e, se a câmara passar do alvo, liga o cooler para jogar o ar quente para fora.',
-  MANUAL: 'Você define lâmpadas e cooler diretamente. O controle automático fica desligado.',
-  DEGRAU: 'Lâmpadas a 100 % e cooler parado, em malha aberta. A curva de subida dá a constante de tempo da câmara.',
-  FALHA: 'A temperatura passou do limite de segurança: o firmware desligou as lâmpadas e ligou o cooler no máximo. Escolha Automático para retomar.',
+  PI: 'O controlador PI aquece com as lâmpadas e a manta e, se a câmara passar do alvo, liga o cooler para jogar o ar quente para fora.',
+  MANUAL: 'Você define o aquecimento (lâmpadas + manta) e o cooler diretamente. O controle automático fica desligado.',
+  DEGRAU: 'Malha aberta com o cooler parado: aquecimento a 40 % com a manta (100 % só com lâmpadas). A curva de subida dá a constante de tempo da câmara.',
+  FALHA: 'A temperatura passou do limite de segurança: o firmware desligou lâmpadas e manta e ligou o cooler no máximo. Escolha Automático para retomar.',
 };
 const MODE_BADGE = { MANUAL: 'Manual', DEGRAU: 'Ensaio de degrau', FALHA: 'Falha: lâmpadas desligadas' };
 
@@ -230,18 +249,36 @@ function render(d) {
     $('sp-value').removeAttribute('data-pending');
   }
 
-  const reach = (d.amb ?? 25) + 30;
   const amb = d.amb ?? 25;
+  const hon = d.hon === 1;
+  const reach = amb + (hon ? 90 : 30);
   $('sp-hint').textContent = d.sp > reach - 0.5
-    ? `Esse alvo está acima do que as lâmpadas alcançam (cerca de ${fmt(reach, 0)} °C com o ambiente atual). Elas vão ficar no máximo e o erro não zera.`
+    ? `Esse alvo está acima do que as lâmpadas alcançam sozinhas (cerca de ${fmt(reach, 0)} °C com o ambiente atual). Ligue a manta ou o erro não zera.`
     : d.sp < amb + 0.5
     ? `Esse alvo está no nível do ambiente (${fmt(amb)} °C) ou abaixo. O cooler só troca o ar de dentro pelo de fora, então a câmara não esfria abaixo do ambiente.`
-    : 'Faixa útil: do ambiente até cerca de ambiente + 30 °C. Acima do alvo, o cooler ajuda a esfriar.';
+    : hon
+    ? 'Faixa útil: do ambiente até 60 °C, o limite do acrílico. Com a manta, a câmara chega lá em poucos minutos.'
+    : `Só lâmpadas: chega a cerca de ${fmt(reach, 0)} °C. Acima do alvo, o cooler ajuda a esfriar.`;
 
   // instrumentos
   $('g-duty').textContent = fmt(d.u * 100, 0);
   $('g-duty-bar').style.width = `${Math.round(d.u * 100)}%`;
   $('g-duty-note').textContent = d.u > 0.01 ? `${d.lamps ?? 3} × W5W acesas` : 'apagadas';
+  const heat = d.heat ?? 0;
+  $('g-heat').textContent = d.hon === 0 ? '–' : fmt(heat * 100, 0);
+  $('g-heat-bar').style.width = `${Math.round(heat * 100)}%`;
+  $('g-heat-note').textContent = d.hon === 0 ? 'desligada (só lâmpadas)'
+    : d.trip ? 'cortada pelo TH2'
+    : heat > 0.01 ? `${fmt(30 * heat * Math.pow((d.v || 12) / 12, 2), 1)} W na base` : 'fria';
+  const sink = d.th;
+  $('gc-sink').hidden = sink == null;
+  if (sink != null) {
+    $('g-sink').textContent = fmt(sink, 0);
+    const frac = Math.max(0, Math.min(1, (sink - 20) / 80));
+    $('g-sink-bar').style.width = `${Math.round(frac * 100)}%`;
+    $('g-sink-bar').parentElement.toggleAttribute('data-trip', !!d.trip);
+    $('g-sink-note').textContent = d.trip ? 'TH2 aberto: esfriando até 85 °C' : `${fmt(100 - sink, 0)} °C até o TH2 abrir`;
+  }
   const fan = d.fan ?? 0;
   $('g-fan').textContent = fmt(fan * 100, 0);
   $('g-fan-bar').style.width = `${Math.round(fan * 100)}%`;
@@ -287,6 +324,9 @@ function render(d) {
 
   // simulacao
   $('sim').hidden = !d.sim;
+  document.querySelectorAll('.sim [data-heat]').forEach((b) => {
+    b.setAttribute('aria-checked', String(Number(b.dataset.heat) === (d.hon ?? 1)));
+  });
   document.querySelectorAll('.sim .segmented button').forEach((b) => {
     b.setAttribute('aria-checked', String(b.dataset.src === d.src));
   });
@@ -296,7 +336,7 @@ function render(d) {
   if (document.activeElement !== $('kp')) $('kp').value = d.kp;
   if (document.activeElement !== $('ki')) $('ki').value = d.ki;
 
-  chart.push({ t: d.t, T: d.T, sp: d.sp, u: d.u, fan: d.fan ?? 0 });
+  chart.push({ t: d.t, T: d.T, sp: d.sp, u: d.u, fan: d.fan ?? 0, heat: d.heat ?? 0 });
   pushTable(d);
   applyScene(d);
 }
@@ -306,7 +346,7 @@ function pushTable(d) {
   if (tableRows.length > 10) tableRows.pop();
   $('table-body').innerHTML = tableRows.map((r) =>
     `<tr><td>${fmt(r.t / 60, 0)} min</td><td>${fmt(r.T)} °C</td><td>${fmt(r.sp)} °C</td>` +
-    `<td>${fmt(r.u * 100, 0)} %</td><td>${fmt((r.fan ?? 0) * 100, 0)} %</td><td>${fmt(r.v, 2)} V</td></tr>`).join('');
+    `<td>${fmt(r.u * 100, 0)} %${r.hon === 0 ? ' (só lâmp.)' : ''}</td><td>${fmt((r.fan ?? 0) * 100, 0)} %</td><td>${fmt(r.v, 2)} V</td></tr>`).join('');
 }
 
 // ------------------------------------------------------------- setpoint
@@ -368,6 +408,9 @@ fanRange.addEventListener('input', () => {
 // ------------------------------------------------------------- simulacao
 document.querySelectorAll('.sim .segmented button').forEach((b) => {
   b.addEventListener('click', () => send(b.dataset.src === 'BAT' ? 'f bat' : 'f atx'));
+});
+document.querySelectorAll('.sim [data-heat]').forEach((b) => {
+  b.addEventListener('click', () => send(`m ${b.dataset.heat}`));
 });
 $('amb-cold').addEventListener('click', () => send(`a ${((last?.amb ?? 25) - 6).toFixed(1)}`));
 $('amb-reset').addEventListener('click', () => send('a 25'));

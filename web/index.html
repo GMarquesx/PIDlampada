@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121A22">
-  <meta name="description" content="Painel da câmara térmica PIDlampada: temperatura, setpoint e lâmpadas em tempo real.">
+  <meta name="description" content="Painel da câmara térmica PIDlampada: temperatura, setpoint, lâmpadas, manta e cooler em tempo real.">
   <title>PIDlampada</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='14' r='9' fill='%23FFB25B'/%3E%3Crect x='12' y='23' width='8' height='6' rx='1.5' fill='%238A9AA8'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,7 +63,7 @@
           <input type="range" id="sp-range" min="25" max="60" step="0.5" value="45" aria-label="Temperatura desejada em graus Celsius">
           <button type="button" class="step" id="sp-plus" aria-label="Aumentar 0,5 °C">+</button>
         </div>
-        <p class="hint" id="sp-hint">O máximo alcançável é cerca de ambiente + 30 °C, com as três lâmpadas no máximo.</p>
+        <p class="hint" id="sp-hint">Faixa útil: do ambiente até 60 °C, o limite do acrílico.</p>
       </section>
 
       <section class="cluster" aria-label="Leituras elétricas">
@@ -78,6 +78,16 @@
           <p class="gauge__value"><span id="g-duty">--</span><small>%</small></p>
           <div class="bar" aria-hidden="true"><span id="g-duty-bar"></span></div>
           <p class="gauge__note" id="g-duty-note">PWM aplicado</p>
+        </div>
+        <div class="gauge" id="gc-heat">
+          <svg class="gauge__icon icon-heater" viewBox="0 0 32 32" aria-hidden="true">
+            <path class="icon-heater__coil" d="M7 29V9a3 3 0 0 1 6 0v14a3 3 0 0 0 6 0V9a3 3 0 0 1 6 0v20"/>
+            <path class="icon-heater__waves" d="M9 4.5c1-1 1-2 0-3M16 6.5c1-1 1-2 0-3M23 4.5c1-1 1-2 0-3"/>
+          </svg>
+          <p class="gauge__label">Manta</p>
+          <p class="gauge__value"><span id="g-heat">--</span><small>%</small></p>
+          <div class="bar bar--heat" aria-hidden="true"><span id="g-heat-bar"></span></div>
+          <p class="gauge__note" id="g-heat-note">--</p>
         </div>
         <div class="gauge" id="gc-fan">
           <svg class="gauge__icon icon-fan" viewBox="0 0 32 32" aria-hidden="true">
@@ -94,6 +104,17 @@
           <p class="gauge__value"><span id="g-fan">--</span><small>%</small></p>
           <div class="bar bar--fan" aria-hidden="true"><span id="g-fan-bar"></span></div>
           <p class="gauge__note" id="g-fan-note">exaustão</p>
+        </div>
+        <div class="gauge" id="gc-sink">
+          <svg class="gauge__icon icon-sink" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M3 27.5h26"/>
+            <path class="icon-sink__fins" d="M6 27.5V15M11 27.5V11M16 27.5V9M21 27.5V11M26 27.5V15"/>
+            <rect class="icon-sink__level" id="i-sink" x="2" y="28.6" width="28" height="1.6" rx="0.8"/>
+          </svg>
+          <p class="gauge__label">Dissipador</p>
+          <p class="gauge__value"><span id="g-sink">--</span><small>°C</small></p>
+          <div class="bar bar--sink" aria-hidden="true"><span id="g-sink-bar"></span></div>
+          <p class="gauge__note" id="g-sink-note">TH2 abre a 100 °C</p>
         </div>
         <div class="gauge" id="gc-volt">
           <svg class="gauge__icon icon-bolt" viewBox="0 0 32 32" aria-hidden="true">
@@ -160,7 +181,7 @@
           <summary>Últimas leituras em tabela</summary>
           <div class="datatable__wrap">
             <table>
-              <thead><tr><th scope="col">Tempo</th><th scope="col">Temp.</th><th scope="col">Alvo</th><th scope="col">Lâmpadas</th><th scope="col">Cooler</th><th scope="col">Tensão</th></tr></thead>
+              <thead><tr><th scope="col">Tempo</th><th scope="col">Temp.</th><th scope="col">Alvo</th><th scope="col">Aquec.</th><th scope="col">Cooler</th><th scope="col">Tensão</th></tr></thead>
               <tbody id="table-body"></tbody>
             </table>
           </div>
@@ -175,12 +196,12 @@
           <button type="button" role="radio" data-mode="DEGRAU" aria-checked="false">Ensaio de degrau</button>
         </div>
         <div class="manual" id="manual" hidden>
-          <label for="duty-range">Potência das lâmpadas <output id="duty-out">0 %</output></label>
+          <label for="duty-range">Aquecimento (lâmpadas + manta) <output id="duty-out">0 %</output></label>
           <input type="range" id="duty-range" min="0" max="100" step="1" value="0">
           <label for="fan-range">Cooler (exaustão) <output id="fan-out">0 %</output></label>
           <input type="range" id="fan-range" min="0" max="100" step="5" value="0">
         </div>
-        <p class="hint" id="mode-hint">O controlador PI aquece com as lâmpadas e, se a câmara passar do alvo, liga o cooler para jogar o ar quente para fora.</p>
+        <p class="hint" id="mode-hint">O controlador PI aquece com as lâmpadas e a manta e, se a câmara passar do alvo, liga o cooler para jogar o ar quente para fora.</p>
       </section>
 
       <section class="sim" id="sim" aria-labelledby="sim-title" hidden>
@@ -192,6 +213,13 @@
           <div class="segmented segmented--small" role="radiogroup" aria-labelledby="src-label">
             <button type="button" role="radio" data-src="ATX" aria-checked="true">ATX 12 V</button>
             <button type="button" role="radio" data-src="BAT" aria-checked="false">Bateria 3S</button>
+          </div>
+        </div>
+        <div class="sim__row">
+          <span class="sim__label" id="heat-label">Manta na base</span>
+          <div class="segmented segmented--small" role="radiogroup" aria-labelledby="heat-label">
+            <button type="button" role="radio" data-heat="1" aria-checked="true">Ligada</button>
+            <button type="button" role="radio" data-heat="0" aria-checked="false">Só lâmpadas</button>
           </div>
         </div>
         <div class="sim__row">

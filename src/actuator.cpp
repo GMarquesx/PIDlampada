@@ -4,6 +4,7 @@
 
 namespace {
 float g_duty = 0.0f;
+float g_fan = 0.0f;
 
 void writeRaw(float duty) {
   if (duty < 0.0f) duty = 0.0f;
@@ -23,7 +24,20 @@ void begin() {
   ledcSetup(PWM_CHANNEL, PWM_FREQ_HZ, PWM_RESOLUTION);
   ledcAttachPin(PIN_PWM_GATE, PWM_CHANNEL);
   writeRaw(0.0f);
+
+  ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ_HZ, FAN_PWM_RESOLUTION);
+  ledcAttachPin(PIN_FAN, FAN_PWM_CHANNEL);
+  setFan(0.0f);
 }
+
+void setFan(float duty) {
+  if (duty < 0.0f) duty = 0.0f;
+  if (duty > 1.0f) duty = 1.0f;
+  ledcWrite(FAN_PWM_CHANNEL, static_cast<uint32_t>(duty * FAN_PWM_MAX));
+  g_fan = duty;
+}
+
+float fan() { return g_fan; }
 
 void setDuty(float duty) { writeRaw(duty); }
 

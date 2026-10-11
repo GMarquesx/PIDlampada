@@ -1,0 +1,7 @@
+# Analise de identificacao e sintonia - PIDlampada
+numpy>=1.26
+pandas>=2.0
+scipy>=1.11
+matplotlib>=3.8
+control>=0.10
+jupyterlab>=4.0

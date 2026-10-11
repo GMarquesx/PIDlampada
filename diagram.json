@@ -92,6 +92,62 @@
       "attrs": {
         "value": "220"
       }
+    },
+    {
+      "type": "wokwi-tm1637-7segment",
+      "id": "disp1",
+      "top": -150,
+      "left": 5,
+      "attrs": {
+        "color": "red",
+        "type": "dp"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "fan1",
+      "top": 30,
+      "left": -180,
+      "attrs": {
+        "color": "blue",
+        "label": "COOLER"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r4",
+      "top": 30,
+      "left": -90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "txt_lamps",
+      "top": -215,
+      "left": -235,
+      "attrs": {
+        "text": "Lampadas W5W - GPIO25, PWM 500 Hz\nno hardware: MOSFET IRLZ44N (Q1)"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "txt_fan",
+      "top": 85,
+      "left": -235,
+      "attrs": {
+        "text": "Cooler 12 V - GPIO26, PWM 25 kHz\nno hardware: Q2 + diodo 1N5819 (roda livre)"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "txt_disp",
+      "top": -185,
+      "left": 5,
+      "attrs": {
+        "text": "Temperatura medida (TM1637)"
+      }
     }
   ],
   "connections": [
@@ -237,6 +293,62 @@
     ],
     [
       "el3:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "disp1:CLK",
+      "esp:D18",
+      "gold",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "disp1:DIO",
+      "esp:D19",
+      "cyan",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "disp1:VCC",
+      "esp:3V3",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "disp1:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D26",
+      "r4:1",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r4:2",
+      "fan1:A",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "fan1:C",
       "esp:GND.2",
       "black",
       [

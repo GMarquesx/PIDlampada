@@ -9,3 +9,12 @@ docs/ensaios/*.csv
 !docs/ensaios/exemplo.csv
 .DS_Store
 Thumbs.db
+analise/.venv/
+analise/__pycache__/
+.ipynb_checkpoints/
+
+# credenciais do hardware real
+include/secrets.h
+
+# intermediarios do esquema
+docs/hardware/build/

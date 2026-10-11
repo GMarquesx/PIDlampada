@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "author": "Gabriel Marques",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ntc-temperature-sensor",
+      "id": "ntc1",
+      "top": -120,
+      "left": 230,
+      "attrs": {
+        "temperature": "25"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot1",
+      "top": 120,
+      "left": 240,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": 250,
+      "left": 20,
+      "attrs": {
+        "color": "green",
+        "label": "MODO"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "el1",
+      "top": -170,
+      "left": -180,
+      "attrs": {
+        "color": "yellow",
+        "label": "EL1"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "el2",
+      "top": -110,
+      "left": -180,
+      "attrs": {
+        "color": "yellow",
+        "label": "EL2"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "el3",
+      "top": -50,
+      "left": -180,
+      "attrs": {
+        "color": "yellow",
+        "label": "EL3"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -170,
+      "left": -90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": -110,
+      "left": -90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": -50,
+      "left": -90,
+      "attrs": {
+        "value": "220"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX0",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX0",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "ntc1:VCC",
+      "esp:3V3",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ntc1:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ntc1:OUT",
+      "esp:D32",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pot1:VCC",
+      "esp:3V3",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pot1:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pot1:SIG",
+      "esp:D33",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btn1:1.l",
+      "esp:D27",
+      "purple",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btn1:2.l",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D25",
+      "r1:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D25",
+      "r2:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D25",
+      "r3:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r1:2",
+      "el1:A",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r2:2",
+      "el2:A",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r3:2",
+      "el3:A",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "el1:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "el2:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "el3:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "dependencies": {}
+}

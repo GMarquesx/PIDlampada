@@ -1,0 +1,6 @@
+# Aponta para o ambiente "wokwi" do platformio.ini.
+# Trocou de env? Troque o caminho aqui tambem - um wokwi.toml = um env.
+[wokwi]
+version = 1
+firmware = '.pio/build/wokwi/firmware.merged.bin'
+elf      = '.pio/build/wokwi/firmware.elf'

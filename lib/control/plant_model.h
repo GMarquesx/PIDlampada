@@ -26,7 +26,8 @@
  * (calor guardado no aluminio) que o controle precisa respeitar.
  *
  * TH2 (KSD301 no dissipador) tambem e' modelado: abre acima de trip_c e
- * so fecha de novo abaixo de reset_c, cortando a manta.
+ * so fecha de novo abaixo de reset_c, cortando a manta (ou, na Rev. D, todo
+ * o aquecimento, porque TH2 esta na cadeia de seguranca do rele K1).
  *
  * A ventoinha so empurra a camara para o ambiente - nunca abaixo dele.
  * Os parametros devem ser substituidos pelos do ensaio de degrau real.
@@ -37,8 +38,10 @@ class PlantModel {
 
   // Liga o segundo no (manta + dissipador). Sem esta chamada o modelo e'
   // exatamente o de primeira ordem.
+  // trip_cuts_all: TH2 na cadeia de seguranca (rele K1) corta lampadas e
+  // manta juntas; sem ela, so a manta.
   void setHeater(float gain_c, float tau_s, float coupling = 1.0f,
-                 float trip_c = 100.0f, float reset_c = 85.0f);
+                 float trip_c = 100.0f, float reset_c = 85.0f, bool trip_cuts_all = false);
 
   void  reset(float temperature_c);
   // duties em [0,1], dt em segundos. Retorna a nova temperatura do ar.
@@ -63,4 +66,5 @@ class PlantModel {
   float trip_c_ = 100.0f, reset_c_ = 85.0f;
   float sink_c_;
   bool  tripped_ = false;
+  bool  trip_all_ = false;
 };

@@ -1,22 +1,23 @@
 /*
- * A camara em 3D.
+ * A camara em 3D - Rev. D: policarbonato 6 mm, 25 x 25 x 25 cm.
  *
- * Unidade = 1 cm. Caixa de 10 x 8 x 10 cm sobre uma base de acrilico preto,
- * chapa de aluminio presa no teto e tres W5W penduradas nela, como na
- * proposta. O brilho e a cor de cada lampada seguem a potencia real
- * entregue (duty corrigido pela tensao), com a inercia de um filamento.
+ * Unidade = 1 cm. Paredes de policarbonato cristal presas por cantoneiras
+ * de aluminio, sobre uma base de MDF. A frente e' uma porta (dobradicas a
+ * esquerda, puxador e ima a direita). No teto, cinco W5W numa chapa de
+ * aluminio; o brilho e a cor de cada uma seguem a potencia real entregue.
  *
- * Cooler de 40 mm na parede direita, perto do teto (onde o ar quente
- * fica), com frestas de entrada embaixo na parede oposta. Gira na
- * proporcao do PWM e mostra o caminho do ar: entra frio pelas frestas,
- * atravessa a camara esquentando e sai pelo cooler.
+ * No piso, de baixo para cima: isolante, manta de silicone de 80 W (a borda
+ * laranja aparece), dois dissipadores aletados e, 7 cm acima do piso, a
+ * prateleira de aluminio perfurado onde ficam as amostras. A ventoinha de
+ * circulacao M2 (60 mm, sempre ligada) sopra o ar pelas aletas; o ar quente
+ * sobe pelos furos da prateleira.
  *
- * No piso, a manta de silicone sob um dissipador aletado: o dissipador
- * esquenta de cor com a temperatura dele e solta ar quente para cima.
+ * Cooler de exaustao de 80 mm na parede direita, no alto; frestas de
+ * entrada embaixo na parede oposta, na altura do dissipador. Gira na
+ * proporcao do PWM, com etiqueta de % e rpm, e o ar mostra o caminho.
  *
- * Na mesa, a ESP32 DevKit v1 numa protoboard, com os jumpers ate a
- * camara e ate o modulo TM1637 (que mostra a leitura do Wokwi). O LED
- * azul da placa (GPIO2) pisca a cada amostra, como no firmware.
+ * Na mesa: modulo TM1637 (mesma leitura do Wokwi) e a ESP32 DevKit v1 numa
+ * protoboard, com jumpers e o LED azul (GPIO2) piscando a cada amostra.
  */
 
 import * as THREE from 'three';
@@ -27,23 +28,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const BOX = { w: 10, h: 8, d: 10, base: 0.6 };
-const LAMP_X = [-2.7, 0, 2.7];
+const BOX = { w: 25, h: 25, d: 25, base: 1.6, t: 0.6 };   // medidas externas da caixa de PC
+const BASE_W = BOX.w + 5, BASE_D = BOX.d + 5;              // base de MDF 300 x 300
+const IN = BOX.w - 2 * BOX.t;                              // 23,8 cm por dentro
+const FLOOR = BOX.base;                                    // piso interno
+const TOP = BOX.base + BOX.h;
+const SHELF_Y = FLOOR + 7.0;                               // prateleira perfurada
+const LAMP_X = [-9, -4.5, 0, 4.5, 9];
+const FAN_Y = TOP - 6.2;                                   // exaustao 80 mm
+const FAN_SCALE = 2;                                       // geometria base = 40 mm
+const CIRC = { scale: 1.5, y: FLOOR + 3.6, z: -IN / 2 + 1.3 };   // M2 60 mm, parede do fundo
+const SINK = { w: 20, base: 0.5, fin: 2.4, fins: 13, y: FLOOR + 0.45 };
 
 // Cor do filamento por potencia: vermelho-alaranjado fraco ate branco quente.
 const COLD = new THREE.Color('#ff4a12');
 const HOT = new THREE.Color('#ffd7a3');
-const ACRYLIC_EDGE = new THREE.Color('#9fd8ea');
+const PC_EDGE = new THREE.Color('#a9dcec');
 const TUNGSTEN = new THREE.Color('#ffb25b');
-const FAN_Y = BOX.base + BOX.h - 2.3;
-const SINK = { w: 8.6, base: 0.28, fin: 1.25, fins: 9, y: BOX.base + 0.32 };   // dissipador no piso
-const ESP_POS = new THREE.Vector3(8.4, 0, 8.2);    // protoboard na mesa
-const ESP_ROT = -0.42;
-// Particulas de ar: exaustao (fora), entrada (fora), caminho interno e conveccao
-const AIR = { out: 90, intake: 50, path: 120, conv: 110 };
-const AIR_N = AIR.out + AIR.intake + AIR.path + AIR.conv;
-const FAN_RPM_MAX = 6000;                          // ventoinha 40 mm a 12 V
-const FAN_VISUAL_MAX = 10;                         // rad/s na tela (sem efeito estroboscopico)
+const ESP_POS = new THREE.Vector3(14.5, 0, 22.5);         // protoboard na mesa
+const ESP_ROT = -0.35;
+const AIR = { out: 110, intake: 60, path: 170, circ: 90, conv: 130 };
+const AIR_N = AIR.out + AIR.intake + AIR.path + AIR.circ + AIR.conv;
+const FAN_RPM_MAX = 3000;                                  // ventoinha 80 mm a 12 V
+const FAN_VISUAL_MAX = 9;                                  // rad/s na tela (sem efeito estroboscopico)
 
 export class ChamberScene {
   constructor(host) {
@@ -51,10 +58,11 @@ export class ChamberScene {
     this.target = { ue: 0, T: 25, amb: 25, fault: false, fan: 0, display: null, displayKey: '',
       heat: 0, hon: 1, sink: null, beat: null };
     this.shown = { b: 0, heat: 0, fan: 0, pad: 0, sink: 25 };
+    this.fanAngle = 0;
+    this.circAngle = 0;
     this.ledOn = false;
     this.lastBeat = null;
     this.fanLabelKey = '';
-    this.fanAngle = 0;
     this.drawnDisplay = undefined;
     this.visible = true;
     this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -76,27 +84,26 @@ export class ChamberScene {
     host.appendChild(r.domElement);
 
     this.scene = new THREE.Scene();
-    // Fundo e neblina na cor da pagina; aquecem junto com as lampadas.
     this.bgCold = new THREE.Color('#10171e');
     this.bgWarm = new THREE.Color('#2b1c10');
     this.scene.background = this.bgCold.clone();
-    this.scene.fog = new THREE.Fog(this.bgCold.clone(), 38, 95);
+    this.scene.fog = new THREE.Fog(this.bgCold.clone(), 110, 280);
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(r), 0.04).texture;
 
-    this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 200);
-    this.camera.position.set(17, 12, 21);
+    this.camera = new THREE.PerspectiveCamera(30, 1, 1, 500);
+    this.camera.position.set(44, 34, 56);
 
     this.controls = new OrbitControls(this.camera, r.domElement);
-    this.controls.target.set(0, BOX.base + BOX.h * 0.5, 0);
+    this.controls.target.set(3, FLOOR + 10, 4);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;
-    this.controls.minDistance = 16;
-    this.controls.maxDistance = 48;
+    this.controls.minDistance = 35;
+    this.controls.maxDistance = 160;
     this.controls.minPolarAngle = 0.35;
     this.controls.maxPolarAngle = 1.48;
     this.controls.autoRotate = !this.reduceMotion;
-    this.controls.autoRotateSpeed = 0.55;
+    this.controls.autoRotateSpeed = 0.5;
     let idle;
     this.controls.addEventListener('start', () => { this.controls.autoRotate = false; clearTimeout(idle); });
     this.controls.addEventListener('end', () => {
@@ -115,7 +122,6 @@ export class ChamberScene {
     new ResizeObserver(() => this.#resize()).observe(host);
     this.#resize();
 
-    // Nao gasta bateria do celular renderizando o que ninguem ve.
     new IntersectionObserver(([e]) => { this.visible = e.isIntersecting; }).observe(host);
     document.addEventListener('visibilitychange', () => { this.hidden = document.hidden; });
 
@@ -127,93 +133,125 @@ export class ChamberScene {
 
   #build() {
     const s = this.scene;
+    s.add(new THREE.HemisphereLight(0x9fb6cc, 0x0b0f13, 0.4));
 
-    s.add(new THREE.HemisphereLight(0x9fb6cc, 0x0b0f13, 0.35));
-
-    // bancada
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(60, 64),
-      new THREE.MeshStandardMaterial({ color: 0x1b242d, roughness: 0.92, metalness: 0, envMapIntensity: 0.2 }),
-    );
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(170, 64),
+      new THREE.MeshStandardMaterial({ color: 0x1b242d, roughness: 0.92, metalness: 0, envMapIntensity: 0.2 }));
     ground.rotation.x = -Math.PI / 2;
     s.add(ground);
-
-    // sombra de contato falsa sob a base
-    const shadowTex = radialTexture('rgba(0,0,0,0.75)', 'rgba(0,0,0,0)');
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(BOX.w * 1.9, BOX.d * 1.9),
-      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }),
-    );
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(BASE_W * 1.8, BASE_D * 1.8),
+      new THREE.MeshBasicMaterial({ map: radialTexture('rgba(0,0,0,0.75)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.01;
+    shadow.position.y = 0.02;
     s.add(shadow);
 
-    // base de acrilico preto
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(BOX.w + 1.2, BOX.base, BOX.d + 1.2),
-      new THREE.MeshPhysicalMaterial({ color: 0x0c0f12, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.6 }),
-    );
+    // base de MDF 15 mm pintada de preto (isola melhor que acrilico)
+    const base = new THREE.Mesh(new THREE.BoxGeometry(BASE_W, BOX.base, BASE_D),
+      new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.8, envMapIntensity: 0.4 }));
     base.position.y = BOX.base / 2;
     s.add(base);
 
-    const top = BOX.base + BOX.h;
-
-    // calor: volume interno que esquenta de cor com a temperatura
-    this.heatMat = new THREE.MeshBasicMaterial({
-      color: 0xff8a3d, transparent: true, opacity: 0, depthWrite: false,
-      blending: THREE.AdditiveBlending, side: THREE.BackSide,
-    });
-    const heat = new THREE.Mesh(new THREE.BoxGeometry(BOX.w - 0.3, BOX.h - 0.3, BOX.d - 0.3), this.heatMat);
-    heat.position.y = BOX.base + BOX.h / 2;
+    // volume interno que esquenta de cor com a temperatura
+    this.heatMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.BackSide });
+    const heat = new THREE.Mesh(new THREE.BoxGeometry(IN - 0.4, BOX.h - BOX.t - 0.4, IN - 0.4), this.heatMat);
+    heat.position.y = FLOOR + (BOX.h - BOX.t) / 2;
     s.add(heat);
 
-    // chapa de aluminio no teto
-    const plate = new THREE.Mesh(
-      new THREE.BoxGeometry(8.2, 0.2, 5.2),
-      new THREE.MeshStandardMaterial({ color: 0xc9d0d6, metalness: 1, roughness: 0.32, envMapIntensity: 0.9 }),
-    );
-    plate.position.y = top - 0.55;
+    // chapa de aluminio no teto com as cinco lampadas
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(21.5, 0.3, 6.5),
+      new THREE.MeshStandardMaterial({ color: 0xc9d0d6, metalness: 1, roughness: 0.32, envMapIntensity: 0.9 }));
+    plate.position.y = TOP - BOX.t - 0.15;
     s.add(plate);
+    this.lamps = LAMP_X.map((x) => this.#lamp(x, TOP - BOX.t - 0.3));
 
-    // lampadas
-    this.lamps = LAMP_X.map((x) => this.#lamp(x, top - 0.65));
+    // LM35 pendurado a meia altura, acima da prateleira
+    this.#sensor(5.5, SHELF_Y + 7.5, -4.5, TOP - BOX.t + 0.3);
 
-    // sensor LM35 (TO-92) pendurado a meia altura, fora do eixo das lampadas
-    this.#sensor(3.1, BOX.base + 3.6, 2.6, top);
-
-    // acrilico: faces quase invisiveis + arestas que conduzem a luz
-    this.acrylic = new THREE.MeshPhysicalMaterial({
-      color: 0xdaf1f8, transparent: true, opacity: 0.06, roughness: 0.05,
-      metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.05, envMapIntensity: 0.15,
-      side: THREE.DoubleSide, depthWrite: false,
-    });
-    const boxGeo = new THREE.BoxGeometry(BOX.w, BOX.h, BOX.d);
-    const box = new THREE.Mesh(boxGeo, this.acrylic);
-    box.position.y = BOX.base + BOX.h / 2 + 0.03;   // acima da base: sem z-fighting
-    box.renderOrder = 2;
-    s.add(box);
-
-    this.edgeMat = new THREE.LineBasicMaterial({ color: ACRYLIC_EDGE.clone(), transparent: true, opacity: 0.6 });
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo), this.edgeMat);
-    edges.position.copy(box.position);
-    edges.renderOrder = 3;
-    s.add(edges);
-
-    this.#fan();
-    this.#vents();
     this.#heater();
+    this.#shelf();
+    this.#walls();
+    this.#fans();
+    this.#vents();
     this.#air();
     this.#displayModule();
     this.#espBoard();
     this.#wires();
   }
 
-  // Cooler 40 x 40 mm na parede +x: moldura com furo, cubo e 7 pas.
-  #fan() {
-    const g = new THREE.Group();
-    g.position.set(BOX.w / 2 + 0.02, FAN_Y, 0);
-    this.scene.add(g);
+  // Paredes de PC (cada uma um painel de 6 mm), cantoneiras e a porta.
+  #walls() {
+    this.pcMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe6f6fb, transparent: true, opacity: 0.07, roughness: 0.04, metalness: 0,
+      clearcoat: 0.4, clearcoatRoughness: 0.05, envMapIntensity: 0.18, side: THREE.DoubleSide, depthWrite: false,
+    });
+    this.edgeMat = new THREE.LineBasicMaterial({ color: PC_EDGE.clone(), transparent: true, opacity: 0.45 });
+    const t = BOX.t, w = BOX.w, h = BOX.h, d = BOX.d;
+    const cy = BOX.base + h / 2;
+    const panels = [
+      [[t, h, d - 2 * t], [-w / 2 + t / 2, cy, 0]],          // esquerda (frestas)
+      [[t, h, d - 2 * t], [w / 2 - t / 2, cy, 0]],           // direita (cooler)
+      [[w, h, t], [0, cy, -d / 2 + t / 2]],                  // fundo
+      [[w, t, d - 2 * t], [0, TOP - t / 2, 0]],              // tampa
+    ];
+    for (const [[sx, sy, sz], [x, y, z]] of panels) {
+      const geo = new THREE.BoxGeometry(sx, sy, sz);
+      const m = new THREE.Mesh(geo, this.pcMat);
+      m.position.set(x, y, z);
+      m.renderOrder = 2;
+      this.scene.add(m);
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), this.edgeMat);
+      e.position.copy(m.position);
+      e.renderOrder = 3;
+      this.scene.add(e);
+    }
+    // porta: painel da frente, levemente afastado, com dobradicas e puxador
+    const door = new THREE.Group();
+    door.position.set(-w / 2, cy, d / 2 - t / 2);
+    this.scene.add(door);
+    const dgeo = new THREE.BoxGeometry(w - 0.1, h - 0.1, t);
+    const dm = new THREE.Mesh(dgeo, this.pcMat);
+    dm.position.x = w / 2;
+    dm.renderOrder = 2;
+    door.add(dm);
+    const de = new THREE.LineSegments(new THREE.EdgesGeometry(dgeo), this.edgeMat);
+    de.position.copy(dm.position);
+    de.renderOrder = 3;
+    door.add(de);
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc3c9cf, metalness: 1, roughness: 0.3 });
+    [-7, 7].forEach((yy) => {
+      const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 3, 16), steel);
+      hinge.position.set(-0.1, yy, t / 2 + 0.3);
+      door.add(hinge);
+    });
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 6, 12), steel);
+    handle.position.set(w - 2, 0, t / 2 + 0.6);
+    door.add(handle);
+    [-3, 3].forEach((yy) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.6), steel);
+      leg.position.set(w - 2, yy, t / 2 + 0.3);
+      door.add(leg);
+    });
 
+    // cantoneiras de aluminio 25 x 25 por fora nas 8 arestas fixas (a frente fica livre para a porta)
+    const alu = new THREE.MeshStandardMaterial({ color: 0xb7bec5, metalness: 0.9, roughness: 0.35, envMapIntensity: 0.8 });
+    const a = 0.65, x0 = w / 2 + 0.05, z0 = d / 2 + 0.05, y0 = BOX.base, y1 = TOP;
+    const beam = (len, axis, x, y, z) => {
+      const geo = axis === 'x' ? new THREE.BoxGeometry(len, a, a) : axis === 'y' ? new THREE.BoxGeometry(a, len, a) : new THREE.BoxGeometry(a, a, len);
+      const m = new THREE.Mesh(geo, alu);
+      m.position.set(x, y, z);
+      this.scene.add(m);
+    };
+    for (const sx of [-1, 1]) beam(h - 2 * a, 'y', sx * (x0 - a / 2), y0 + h / 2, -(z0 - a / 2));
+    for (const yy of [y0 + a / 2, y1 - a / 2]) {
+      beam(w, 'x', 0, yy, -(z0 - a / 2));
+      for (const sx of [-1, 1]) beam(d - 2 * BOX.t, 'z', sx * (x0 - a / 2), yy, 0);
+    }
+  }
+
+  // Fabrica de ventoinha: geometria de 40 mm voltada para +x, escalada.
+  #makeFan(scale, sticker = 0x9aa3ab) {
+    const g = new THREE.Group();
     const frameShape = new THREE.Shape();
     frameShape.moveTo(-2, -2); frameShape.lineTo(2, -2); frameShape.lineTo(2, 2); frameShape.lineTo(-2, 2); frameShape.lineTo(-2, -2);
     const hole = new THREE.Path();
@@ -223,55 +261,67 @@ export class ChamberScene {
     frameGeo.translate(0, 0, -0.5);
     const plastic = new THREE.MeshStandardMaterial({ color: 0x16191d, roughness: 0.55, envMapIntensity: 0.5 });
     const frame = new THREE.Mesh(frameGeo, plastic);
-    frame.rotation.y = Math.PI / 2;           // furo voltado para o eixo x
+    frame.rotation.y = Math.PI / 2;
     g.add(frame);
-
-    this.fanRotor = new THREE.Group();
-    g.add(this.fanRotor);
+    const rotor = new THREE.Group();
+    g.add(rotor);
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.7, 28), plastic);
     hub.rotation.z = Math.PI / 2;
-    this.fanRotor.add(hub);
-    const sticker = new THREE.Mesh(new THREE.CircleGeometry(0.5, 28),
-      new THREE.MeshStandardMaterial({ color: 0x9aa3ab, metalness: 0.6, roughness: 0.35 }));
-    sticker.rotation.y = Math.PI / 2;
-    sticker.position.x = 0.36;
-    this.fanRotor.add(sticker);
-
+    rotor.add(hub);
+    const st = new THREE.Mesh(new THREE.CircleGeometry(0.5, 28),
+      new THREE.MeshStandardMaterial({ color: sticker, metalness: 0.6, roughness: 0.35 }));
+    st.rotation.y = Math.PI / 2;
+    st.position.x = 0.36;
+    rotor.add(st);
     const bladeMat = new THREE.MeshStandardMaterial({ color: 0x23282e, roughness: 0.5, envMapIntensity: 0.5, side: THREE.DoubleSide });
     for (let i = 0; i < 7; i++) {
       const arm = new THREE.Group();
       arm.rotation.x = (i / 7) * Math.PI * 2;
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.08, 0.62), bladeMat);
       blade.position.y = 1.15;
-      blade.rotation.y = 0.5;                  // passo da pa
+      blade.rotation.y = 0.5;
       arm.add(blade);
-      this.fanRotor.add(arm);
+      rotor.add(arm);
     }
-
-    // borrao de movimento: disco translucido que aparece com a rotacao
-    this.fanBlurMat = new THREE.MeshBasicMaterial({ color: 0x2a3038, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-    const blur = new THREE.Mesh(new THREE.RingGeometry(0.62, 1.74, 40), this.fanBlurMat);
+    const blurMat = new THREE.MeshBasicMaterial({ color: 0x2a3038, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const blur = new THREE.Mesh(new THREE.RingGeometry(0.62, 1.74, 40), blurMat);
     blur.rotation.y = Math.PI / 2;
     g.add(blur);
-    // aneis de velocidade: mais visiveis quanto mais rapido
-    this.fanStreakMat = new THREE.MeshBasicMaterial({ color: 0x9aa6c8, transparent: true, opacity: 0, depthWrite: false,
+    const streakMat = new THREE.MeshBasicMaterial({ color: 0x9aa6c8, transparent: true, opacity: 0, depthWrite: false,
       side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     for (const r of [1.05, 1.4]) {
-      const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.035, 48), this.fanStreakMat);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.035, 48), streakMat);
       ring.rotation.y = Math.PI / 2;
       ring.position.x = 0.38;
       g.add(ring);
     }
+    g.scale.setScalar(scale);
+    return { g, rotor, blurMat, streakMat };
+  }
 
-    // etiqueta flutuante: PWM e rotacao estimada
+  #fans() {
+    // exaustao 80 mm na parede +x
+    const ex = this.#makeFan(FAN_SCALE);
+    ex.g.position.set(BOX.w / 2 + 0.05, FAN_Y, 0);
+    this.scene.add(ex.g);
+    this.fanRotor = ex.rotor; this.fanBlurMat = ex.blurMat; this.fanStreakMat = ex.streakMat;
+
+    // circulacao M2 60 mm no fundo, embaixo da prateleira, soprando para +z
+    const ci = this.#makeFan(CIRC.scale, 0x5d8fd8);
+    ci.g.rotation.y = -Math.PI / 2;
+    ci.g.position.set(0, CIRC.y, CIRC.z);
+    this.scene.add(ci.g);
+    this.circRotor = ci.rotor; this.circBlur = ci.blurMat;
+
+    // etiqueta flutuante do cooler: PWM e rotacao estimada
     this.fanLabelCanvas = document.createElement('canvas');
     this.fanLabelCanvas.width = 720; this.fanLabelCanvas.height = 128;
     this.fanLabelTex = new THREE.CanvasTexture(this.fanLabelCanvas);
     this.fanLabelTex.colorSpace = THREE.SRGBColorSpace;
     this.fanLabelMat = new THREE.SpriteMaterial({ map: this.fanLabelTex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
     this.fanLabel = new THREE.Sprite(this.fanLabelMat);
-    this.fanLabel.scale.set(5.6, 1.0, 1);
-    this.fanLabel.position.set(BOX.w / 2 + 2.6, FAN_Y + 3.1, 0);
+    this.fanLabel.scale.set(13, 2.3, 1);
+    this.fanLabel.position.set(BOX.w / 2 + 6, FAN_Y + 7, 0);
     this.scene.add(this.fanLabel);
   }
 
@@ -294,54 +344,116 @@ export class ChamberScene {
     this.fanLabelTex.needsUpdate = true;
   }
 
-  // Manta de silicone sob um dissipador aletado, sobre isolante, no piso.
+  // Frestas de entrada na parede -x: 2 fileiras de 9 furos de 8 mm (PIDL-MEC-001).
+  #vents() {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x06080a });
+    const geo = new THREE.CircleGeometry(0.4, 20);
+    for (const yy of [3.5, 5.0]) {
+      for (let i = 0; i < 9; i++) {
+        const hole = new THREE.Mesh(geo, mat);
+        hole.rotation.y = -Math.PI / 2;
+        hole.position.set(-BOX.w / 2 - 0.02, FLOOR + yy, -7.2 + i * 1.8);
+        this.scene.add(hole);
+      }
+    }
+  }
+
+  // Isolante, manta de silicone de 80 W e dois dissipadores aletados.
   #heater() {
     const g = new THREE.Group();
     this.scene.add(g);
-    const y0 = BOX.base;
-    // isolante (fibra ceramica): protege a base de acrilico
-    const insul = new THREE.Mesh(new THREE.BoxGeometry(9.3, 0.14, 9.3),
+    const insul = new THREE.Mesh(new THREE.BoxGeometry(22.6, 0.3, 22.6),
       new THREE.MeshStandardMaterial({ color: 0xd9d4c7, roughness: 0.95, envMapIntensity: 0.3 }));
-    insul.position.y = y0 + 0.07;
+    insul.position.y = FLOOR + 0.15;
     g.add(insul);
-    // manta de silicone: a borda laranja aparece por baixo do dissipador
     this.padMat = new THREE.MeshStandardMaterial({ color: 0xc2441c, roughness: 0.7, emissive: new THREE.Color(0xff4a12), emissiveIntensity: 0 });
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(8.95, 0.09, 8.95), this.padMat);
-    pad.position.y = y0 + 0.185;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(20.6, 0.15, 20.6), this.padMat);
+    pad.position.y = FLOOR + 0.375;
     g.add(pad);
-    // fios da manta saindo para tras
     const wireMat = new THREE.MeshStandardMaterial({ color: 0xb3261e, roughness: 0.5 });
-    [-0.5, 0.5].forEach((dz) => {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8), wireMat);
+    [-0.6, 0.6].forEach((dx) => {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.0, 8), wireMat);
       w.rotation.x = Math.PI / 2;
-      w.position.set(3.6 + dz * 0.4, y0 + 0.2, -4.9);
+      w.position.set(7.5 + dx, FLOOR + 0.4, -11.0);
       g.add(w);
     });
-
-    // dissipador de aluminio aletado
     this.sinkMat = new THREE.MeshStandardMaterial({ color: 0xb9c1c8, metalness: 0.9, roughness: 0.38, envMapIntensity: 0.9,
       emissive: new THREE.Color(0xff5a1f), emissiveIntensity: 0 });
-    const sbase = new THREE.Mesh(new THREE.BoxGeometry(SINK.w, SINK.base, SINK.w), this.sinkMat);
-    sbase.position.y = SINK.y + SINK.base / 2;
-    g.add(sbase);
-    const pitch = SINK.w / SINK.fins;
-    for (let i = 0; i < SINK.fins; i++) {
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, SINK.fin, SINK.w), this.sinkMat);
-      fin.position.set(-SINK.w / 2 + pitch * (i + 0.5), SINK.y + SINK.base + SINK.fin / 2, 0);
-      g.add(fin);
+    for (const zc of [-5.05, 5.05]) {
+      const sb = new THREE.Mesh(new THREE.BoxGeometry(SINK.w, SINK.base, 9.9), this.sinkMat);
+      sb.position.set(0, SINK.y + SINK.base / 2, zc);
+      g.add(sb);
+      const pitch = SINK.w / SINK.fins;
+      for (let i = 0; i < SINK.fins; i++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.22, SINK.fin, 9.9), this.sinkMat);
+        fin.position.set(-SINK.w / 2 + pitch * (i + 0.5), SINK.y + SINK.base + SINK.fin / 2, zc);
+        g.add(fin);
+      }
     }
-    // TH2 (KSD301) preso na lateral do dissipador
-    const th2 = new THREE.Group();
-    th2.position.set(SINK.w / 2 + 0.25, SINK.y + 0.55, 2.6);
-    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 24),
+    // TH2 (KSD301) na lateral do dissipador
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.5, 24),
       new THREE.MeshStandardMaterial({ color: 0xcfd5da, metalness: 1, roughness: 0.25 }));
     can.rotation.z = Math.PI / 2;
-    th2.add(can);
-    const tab = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 1.3),
-      new THREE.MeshStandardMaterial({ color: 0xcfd5da, metalness: 1, roughness: 0.3 }));
-    tab.position.x = -0.12;
-    th2.add(tab);
-    g.add(th2);
+    can.position.set(SINK.w / 2 + 0.4, SINK.y + 1.2, 6);
+    g.add(can);
+  }
+
+  // Prateleira de aluminio perfurado (furos de 5 mm, ~40 % aberta) sobre
+  // quatro espacadores, 7 cm acima do piso. Com amostras em cima.
+  #shelf() {
+    const holes = new THREE.CanvasTexture(perforationCanvas());
+    holes.wrapS = holes.wrapT = THREE.RepeatWrapping;
+    holes.repeat.set(16, 16);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xc4cad0, metalness: 0.85, roughness: 0.4, envMapIntensity: 0.9,
+      alphaMap: holes, alphaTest: 0.5, side: THREE.DoubleSide });
+    this.shelfMat = mat;
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(IN - 0.6, IN - 0.6), mat);
+    top.rotation.x = -Math.PI / 2;
+    top.position.y = SHELF_Y;
+    this.scene.add(top);
+    const rim = new THREE.MeshStandardMaterial({ color: 0xc4cad0, metalness: 0.85, roughness: 0.4 });
+    const L = IN - 0.6;
+    [[L, 0.4, 0.15, 0, L / 2], [L, 0.4, 0.15, 0, -L / 2], [0.15, 0.4, L, L / 2, 0], [0.15, 0.4, L, -L / 2, 0]].forEach(([sx, sy, sz, x, z]) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), rim);
+      m.position.set(x, SHELF_Y - 0.2, z);
+      this.scene.add(m);
+    });
+    const post = new THREE.MeshStandardMaterial({ color: 0xd4c27a, metalness: 0.9, roughness: 0.3 });
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, SHELF_Y - FLOOR, 12), post);
+      p.position.set(sx * (L / 2 - 0.8), FLOOR + (SHELF_Y - FLOOR) / 2, sz * (L / 2 - 0.8));
+      this.scene.add(p);
+    }
+    // amostras: duas placas de Petri e um vaso com muda
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, roughness: 0.05, clearcoat: 1, depthWrite: false });
+    [[-6, 4], [-2.2, 6.5]].forEach(([x, z]) => {
+      const dish = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.9, 32, 1, true), glass);
+      dish.position.set(x, SHELF_Y + 0.45, z);
+      this.scene.add(dish);
+      const agar = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.25, 32),
+        new THREE.MeshStandardMaterial({ color: 0xe8c86a, roughness: 0.6, transparent: true, opacity: 0.85 }));
+      agar.position.set(x, SHELF_Y + 0.15, z);
+      this.scene.add(agar);
+    });
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 1.7, 3.6, 24),
+      new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.85 }));
+    pot.position.set(4.5, SHELF_Y + 1.8, -4.5);
+    this.scene.add(pot);
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(2.05, 2.05, 0.2, 24),
+      new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: 1 }));
+    soil.position.set(4.5, SHELF_Y + 3.45, -4.5);
+    this.scene.add(soil);
+    const leaf = new THREE.MeshStandardMaterial({ color: 0x4f9a3a, roughness: 0.6, side: THREE.DoubleSide });
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 8), leaf);
+    stem.position.set(4.5, SHELF_Y + 4.8, -4.5);
+    this.scene.add(stem);
+    [[0.9, 0.5], [-0.9, -0.4], [0.2, 1.0]].forEach(([dx, rot], i) => {
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 8), leaf);
+      l.scale.set(1, 0.25, 0.55);
+      l.position.set(4.5 + dx, SHELF_Y + 5.2 + i * 0.5, -4.5);
+      l.rotation.z = rot;
+      this.scene.add(l);
+    });
   }
 
   // ESP32 DevKit v1 numa meia protoboard, na mesa.
@@ -443,51 +555,43 @@ export class ChamberScene {
     g.add(lbl);
   }
 
-  // Jumpers: da protoboard ate a camara (gates e sensor) e ate o display.
+  // Jumpers: da protoboard ate a lateral da base (gates e sensor) e ate o display.
   #wires() {
     const local = (x, z) => new THREE.Vector3(x, 0.9, z)
       .applyAxisAngle(new THREE.Vector3(0, 1, 0), ESP_ROT).add(ESP_POS);
-    const sideX = (BOX.w + 1.2) / 2 + 0.02;
+    const front = BASE_D / 2 + 0.02;
+    this.dispGroup.updateMatrixWorld(true);
+    const pin = (x) => this.dispGroup.localToWorld(new THREE.Vector3(x, -1.0, 0.36));
     const runs = [
-      // [cor, ponto na protoboard (local), destino (mundo)]
-      [0xff8a1c, [-1.8, -2.3], new THREE.Vector3(sideX, 0.35, 2.2)],    // PWM_GATE  (lampadas)
-      [0xd8342a, [-1.0, -2.3], new THREE.Vector3(sideX, 0.35, 1.2)],    // HEAT_GATE (manta)
-      [0x3b6fe0, [-0.2, -2.3], new THREE.Vector3(sideX, 0.35, 0.2)],    // FAN_GATE  (cooler)
-      [0x2fb36a, [0.6, -2.3], new THREE.Vector3(sideX, 0.35, -0.8)],    // TEMP_S    (LM35)
-      [0xe23b3b, [-2.6, 2.3], new THREE.Vector3(0.45, 0.44, 6.55)],     // 3V3 display
-      [0x222428, [-1.8, 2.3], new THREE.Vector3(0.15, 0.44, 6.55)],     // GND display
-      [0xf2c230, [-1.0, 2.3], new THREE.Vector3(-0.15, 0.44, 6.55)],    // CLK
-      [0x34c6d8, [-0.2, 2.3], new THREE.Vector3(-0.45, 0.44, 6.55)],    // DIO
+      [0xff8a1c, [-1.8, -2.3], new THREE.Vector3(9, 0.8, front)],      // PWM_GATE  (lampadas)
+      [0xd8342a, [-1.0, -2.3], new THREE.Vector3(10, 0.8, front)],     // HEAT_GATE (manta)
+      [0x3b6fe0, [-0.2, -2.3], new THREE.Vector3(11, 0.8, front)],     // FAN_GATE  (cooler)
+      [0x2fb36a, [0.6, -2.3], new THREE.Vector3(12, 0.8, front)],      // TEMP_S    (LM35)
+      [0xe23b3b, [-2.6, 2.3], pin(0.45)],                               // 3V3 display
+      [0x222428, [-1.8, 2.3], pin(0.15)],                               // GND
+      [0xf2c230, [-1.0, 2.3], pin(-0.15)],                              // CLK
+      [0x34c6d8, [-0.2, 2.3], pin(-0.45)],                              // DIO
     ];
     for (const [color, [lx, lz], end] of runs) {
       const a = local(lx, lz);
-      // sobe da protoboard, faz um arco e deita na mesa ate o destino
-      const p1 = a.clone().add(new THREE.Vector3(0, 0.5, 0));
-      const p2 = a.clone().lerp(end, 0.22); p2.y = 0.75;
-      const p3 = a.clone().lerp(end, 0.55); p3.y = 0.1;
-      const p4 = a.clone().lerp(end, 0.85); p4.y = 0.1;
+      const p1 = a.clone().add(new THREE.Vector3(0, 0.6, 0));
+      const p2 = a.clone().lerp(end, 0.25); p2.y = 0.9;
+      const p3 = a.clone().lerp(end, 0.6); p3.y = 0.12;
+      const p4 = a.clone().lerp(end, 0.88); p4.y = Math.max(0.12, end.y * 0.5);
       const curve = new THREE.CatmullRomCurve3([a, p1, p2, p3, p4, end]);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.055, 6, false),
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.07, 6, false),
         new THREE.MeshStandardMaterial({ color, roughness: 0.45, envMapIntensity: 0.4 }));
       this.scene.add(tube);
     }
   }
 
-  // Frestas de entrada de ar, embaixo, na parede oposta ao cooler.
-  #vents() {
-    const mat = new THREE.MeshBasicMaterial({ color: 0x06080a });
-    for (let i = 0; i < 4; i++) {
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 4.2), mat);
-      slot.position.set(-BOX.w / 2 - 0.01, BOX.base + 0.9 + i * 0.5, 0);
-      this.scene.add(slot);
-    }
-  }
-
-  // Ar em quatro grupos, num unico Points aditivo (cor preta = invisivel):
+  // Ar em cinco grupos, num unico Points aditivo (cor preta = invisivel):
   //   out    - jato quente saindo do cooler
   //   intake - ar frio entrando pelas frestas
-  //   path   - caminho interno, das frestas ate o cooler (esquentando)
-  //   conv   - conveccao subindo do dissipador quando a manta esquenta
+  //   path   - caminho interno com o cooler ligado: frestas -> aletas ->
+  //            furos da prateleira -> cooler, esquentando no caminho
+  //   circ   - ventoinha M2 soprando pelas aletas, embaixo da prateleira
+  //   conv   - ar quente subindo pelos furos da prateleira
   #air() {
     const pos = new Float32Array(AIR_N * 3);
     const col = new Float32Array(AIR_N * 3);
@@ -499,17 +603,17 @@ export class ChamberScene {
         this.airSeed.push({
           kind, p: Math.random(), v: 0.7 + Math.random() * 0.6,
           y: r * Math.sin(a), z: r * Math.cos(a),
-          x0: (Math.random() - 0.5) * SINK.w * 0.9, z0: (Math.random() - 0.5) * SINK.w * 0.9,
+          x0: (Math.random() - 0.5) * (IN - 3), z0: (Math.random() - 0.5) * (IN - 3), h: Math.random(),
           w: Math.random() * Math.PI * 2,
         });
       }
     };
-    add('out', AIR.out); add('intake', AIR.intake); add('path', AIR.path); add('conv', AIR.conv);
+    add('out', AIR.out); add('intake', AIR.intake); add('path', AIR.path); add('circ', AIR.circ); add('conv', AIR.conv);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const mat = new THREE.PointsMaterial({
-      size: 0.34, map: radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)'), vertexColors: true,
+      size: 0.75, map: radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)'), vertexColors: true,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
     });
     this.air = new THREE.Points(geo, mat);
@@ -520,48 +624,55 @@ export class ChamberScene {
   #updateAir(dt, f, heatLvl) {
     const pos = this.air.geometry.attributes.position.array;
     const col = this.air.geometry.attributes.color.array;
-    const warm = Math.max(0, Math.min(1, (this.target.T - this.target.amb) / 30));
+    const warm = Math.max(0, Math.min(1, (this.target.T - this.target.amb) / 40));
     const still = this.reduceMotion;
     const cold = [0.28, 0.5, 0.95], hot = [1.0, 0.55, 0.22];
     const mix = (k, m) => [cold[0] + (hot[0] - cold[0]) * m, cold[1] + (hot[1] - cold[1]) * m, cold[2] + (hot[2] - cold[2]) * m].map((c) => c * k);
-    const ventX = -BOX.w / 2 + 0.5, fanX = BOX.w / 2 - 0.7;
-    const topY = BOX.base + BOX.h - 0.9;
+    const ventX = -IN / 2 + 0.5, fanX = IN / 2 - 1.5;
+    const ceil = TOP - BOX.t - 3;
+    const smooth = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
     for (let i = 0; i < AIR_N; i++) {
       const s = this.airSeed[i];
       let x, y, z, c;
       if (s.kind === 'out') {
-        if (!still) s.p += dt * s.v * (0.2 + 1.3 * f);
+        if (!still) s.p += dt * s.v * (0.2 + 1.2 * f);
         if (s.p > 1) s.p -= 1;
-        x = BOX.w / 2 + 0.6 + s.p * 8;
-        y = FAN_Y + s.y * 1.4 * (1 + s.p * 0.9) + s.p * 0.9;
-        z = s.z * 1.4 * (1 + s.p * 0.9);
+        x = BOX.w / 2 + 1.5 + s.p * 20;
+        y = FAN_Y + s.y * 3.2 * (1 + s.p * 0.9) + s.p * 2.4;
+        z = s.z * 3.2 * (1 + s.p * 0.9);
         c = mix((1 - s.p) * f * 1.1, 0.45 + 0.55 * warm);
       } else if (s.kind === 'intake') {
-        if (!still) s.p += dt * s.v * (0.2 + 1.0 * f);
+        if (!still) s.p += dt * s.v * (0.2 + 0.9 * f);
         if (s.p > 1) s.p -= 1;
-        x = -BOX.w / 2 - 5.5 + s.p * 5.3;
-        y = BOX.base + 1.7 + s.y * 0.7;
-        z = s.z * 2.2;
+        x = -BOX.w / 2 - 14 + s.p * 14;
+        y = FLOOR + 3.2 + s.y * 2.0;
+        z = s.z * 6.5;
         c = mix(Math.sin(s.p * Math.PI) * f * 0.9, 0);
       } else if (s.kind === 'path') {
-        // curva das frestas (embaixo, -x) ate o cooler (em cima, +x)
-        if (!still) s.p += dt * s.v * (0.12 + 0.85 * f);
+        if (!still) s.p += dt * s.v * (0.1 + 0.7 * f);
         if (s.p > 1) s.p -= 1;
         const p = s.p;
-        x = ventX + (fanX - ventX) * p;
-        const base = BOX.base + 1.7 + (FAN_Y - BOX.base - 1.7) * (p * p * (3 - 2 * p));
-        y = base + s.y * 1.1 * (1 - 0.5 * p) + Math.sin(p * Math.PI) * 1.2;
-        z = s.z * 3.2 * (1 - 0.55 * p);
-        c = mix(Math.sin(Math.min(1, p * 1.15) * Math.PI) * f * 0.85, p);
+        x = ventX + (fanX - ventX) * smooth(0, 1, p);
+        y = FLOOR + 2 + s.h * 2.4 + (FAN_Y - FLOOR - 3) * smooth(0.3, 0.95, p) + Math.sin(p * 9 + s.w) * 0.4;
+        z = s.z * 9 * (1 - 0.65 * smooth(0.4, 1, p));
+        c = mix(Math.sin(Math.min(1, p * 1.12) * Math.PI) * f * 0.85, smooth(0.15, 0.7, p));
+      } else if (s.kind === 'circ') {
+        // M2: do fundo para a frente, entre as aletas
+        if (!still) s.p += dt * s.v * 0.55;
+        if (s.p > 1) s.p -= 1;
+        x = s.x0 * 0.85;
+        y = SINK.y + 0.8 + s.h * (SHELF_Y - SINK.y - 1.6);
+        z = CIRC.z + 2 + s.p * (IN - 4);
+        const k = Math.sin(s.p * Math.PI) * (0.18 + 0.8 * heatLvl);
+        c = mix(k, 0.25 + 0.75 * heatLvl);
       } else {
-        // conveccao: sobe do dissipador e, com o cooler ligado, e' puxada para ele
-        if (!still) s.p += dt * s.v * (0.18 + 0.25 * heatLvl);
-        if (s.p > 1) { s.p -= 1; s.x0 = (Math.random() - 0.5) * SINK.w * 0.9; s.z0 = (Math.random() - 0.5) * SINK.w * 0.9; }
+        // conveccao: sobe pelos furos da prateleira; com o cooler, e' puxada para ele
+        if (!still) s.p += dt * s.v * (0.16 + 0.22 * heatLvl);
+        if (s.p > 1) { s.p -= 1; s.x0 = (Math.random() - 0.5) * (IN - 3); s.z0 = (Math.random() - 0.5) * (IN - 3); }
         const p = s.p;
-        const y0 = SINK.y + SINK.base + SINK.fin;
-        y = y0 + p * (topY - y0);
-        x = s.x0 + Math.sin(s.w + p * 6) * 0.25 + (fanX - s.x0) * f * p * p;
-        z = s.z0 * (1 - 0.6 * p * f) + Math.cos(s.w + p * 5) * 0.25;
+        y = SHELF_Y + 0.3 + p * (ceil - SHELF_Y);
+        x = s.x0 + Math.sin(s.w + p * 6) * 0.6 + (fanX - s.x0) * f * p * p;
+        z = s.z0 * (1 - 0.6 * p * f) + Math.cos(s.w + p * 5) * 0.6;
         const k = Math.sin(Math.min(1, p * 1.2) * Math.PI) * heatLvl * (1 - 0.6 * f);
         c = [1.25 * k, 0.5 * k, 0.18 * k];
       }
@@ -570,15 +681,14 @@ export class ChamberScene {
     }
     this.air.geometry.attributes.position.needsUpdate = true;
     this.air.geometry.attributes.color.needsUpdate = true;
-    this.air.visible = f > 0.01 || heatLvl > 0.02;
   }
 
-  // Modulo TM1637 apoiado na frente da base.
   #displayModule() {
     const g = new THREE.Group();
-    g.position.set(0, 1.35, (BOX.d + 1.2) / 2 + 0.35);
+    g.position.set(-3.5, 1.35, BASE_D / 2 + 1.4);
     g.rotation.x = -0.28;
     this.scene.add(g);
+    this.dispGroup = g;
 
     const pcb = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 0.16),
       new THREE.MeshStandardMaterial({ color: 0x1b4f8f, roughness: 0.55, envMapIntensity: 0.4 }));
@@ -646,7 +756,7 @@ export class ChamberScene {
     fil.position.y = glass.position.y - 0.15;
     g.add(fil);
 
-    const light = new THREE.PointLight(COLD.clone(), 0, 0, 2);
+    const light = new THREE.PointLight(COLD.clone(), 0, 0, 2);   // decaimento fisico (unidade = cm)
     light.position.y = glass.position.y;
     g.add(light);
 
@@ -686,20 +796,18 @@ export class ChamberScene {
     if (!this.framed || this.lastAspect !== this.camera.aspect) this.#frameBox();
   }
 
-  // Afasta a camera o bastante para a caixa (esfera de ~9 cm) caber inteira,
-  // tanto na vertical quanto na horizontal. Em tela de celular, em pe, o
-  // eixo limitante e' o horizontal. Mantem a direcao atual da camera.
+  // Afasta a camera o bastante para a caixa e a protoboard caberem inteiras,
+  // tanto na vertical quanto na horizontal. Mantem a direcao atual.
   #frameBox() {
-    const radius = 11.2;      // caixa + protoboard na mesa
+    const radius = 27;
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const dist = radius / Math.sin(Math.min(vfov, hfov) / 2);
-    // em retrato, sobe o alvo para a caixa ficar acima da leitura de temperatura
     const portrait = this.camera.aspect < 0.9;
-    this.controls.target.set(1.4, BOX.base + BOX.h * (portrait ? 0.25 : 0.32), 1.6);
+    this.controls.target.set(3, FLOOR + BOX.h * (portrait ? 0.3 : 0.38), 5);
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
     this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
-    this.controls.maxDistance = Math.max(48, dist * 1.6);
+    this.controls.maxDistance = Math.max(160, dist * 1.6);
     this.framed = true;
     this.lastAspect = this.camera.aspect;
   }
@@ -710,35 +818,29 @@ export class ChamberScene {
 
     const t = this.target;
     const goal = t.fault ? 0 : Math.max(0, Math.min(1, t.ue));
-    // inercia termica do filamento: ~0,25 s
-    this.shown.b += (goal - this.shown.b) * (1 - Math.exp(-dt / 0.25));
-    const heatGoal = Math.max(0, Math.min(1, (t.T - t.amb) / 30));
+    this.shown.b += (goal - this.shown.b) * (1 - Math.exp(-dt / 0.25));      // inercia do filamento
+    const heatGoal = Math.max(0, Math.min(1, (t.T - t.amb) / 45));
     this.shown.heat += (heatGoal - this.shown.heat) * (1 - Math.exp(-dt / 0.8));
 
     const p = this.shown.b;
-    // Luz visivel de um filamento cresce bem mais rapido que a potencia.
     const lum = Math.pow(p, 1.7);
     const color = COLD.clone().lerp(HOT, Math.pow(p, 0.7));
-
     for (const L of this.lamps) {
       L.light.color.copy(color);
-      L.light.intensity = 70 * lum;
+      L.light.intensity = 230 * lum;
       L.glassMat.emissive.copy(color);
       L.glassMat.emissiveIntensity = 0.1 + 1.6 * lum;
       L.filMat.color.copy(p < 0.03 ? new THREE.Color(0x3a2a22) : color.clone().multiplyScalar(1 + 5 * lum));
     }
+    this.heatMat.opacity = 0.07 * this.shown.heat;
+    this.edgeMat.color.copy(PC_EDGE).lerp(TUNGSTEN, Math.min(1, lum * 0.8));
+    this.edgeMat.opacity = 0.4 + 0.4 * lum;
+    this.bloom.strength = 0.25 + 0.6 * lum;
 
-    this.heatMat.opacity = 0.09 * this.shown.heat;
-    this.edgeMat.color.copy(ACRYLIC_EDGE).lerp(TUNGSTEN, Math.min(1, lum * 0.85));
-    this.edgeMat.opacity = 0.5 + 0.4 * lum;
-    this.bloom.strength = 0.25 + 0.65 * lum;
-
-    // cooler: inercia do rotor ~0,8 s; giro visual (o real e' rapido demais)
+    // cooler: inercia ~0,8 s; giro proporcional ao PWM, limitado na tela
     const fanGoal = Math.max(0, Math.min(1, t.fan || 0));
     this.shown.fan += (fanGoal - this.shown.fan) * (1 - Math.exp(-dt / 0.8));
     const f = this.shown.fan;
-    // Giro proporcional ao PWM, limitado a ~10 rad/s na tela: o rotor real
-    // (ate 6000 rpm) viraria efeito estroboscopico a 60 quadros/s.
     if (!this.reduceMotion && f > 0.005) this.fanAngle += (0.6 + (FAN_VISUAL_MAX - 0.6) * f) * dt;
     this.fanRotor.rotation.x = this.fanAngle;
     this.fanBlurMat.opacity = Math.min(0.6, f * 0.75);
@@ -747,12 +849,17 @@ export class ChamberScene {
     const labelKey = Math.round(fanGoal * 100);
     if (labelKey !== this.fanLabelKey && fanGoal > 0.01) { this.fanLabelKey = labelKey; this.#drawFanLabel(fanGoal); }
 
-    // manta: a potencia esquenta a borda; o dissipador segue a temperatura dele
+    // M2 sempre ligada, rotacao constante
+    if (!this.reduceMotion) this.circAngle += 6 * dt;
+    this.circRotor.rotation.x = this.circAngle;
+    this.circBlur.opacity = 0.45;
+
+    // manta e dissipador
     const padGoal = t.fault ? 0 : Math.max(0, Math.min(1, t.heat || 0));
     this.shown.pad += (padGoal - this.shown.pad) * (1 - Math.exp(-dt / 0.6));
-    const sinkGoal = t.sink != null ? t.sink : t.T + 40 * padGoal;
+    const sinkGoal = t.sink != null ? t.sink : t.T + 25 * padGoal;
     this.shown.sink += (sinkGoal - this.shown.sink) * (1 - Math.exp(-dt / 0.8));
-    const sinkHot = Math.max(0, Math.min(1, (this.shown.sink - 30) / 70));
+    const sinkHot = Math.max(0, Math.min(1, (this.shown.sink - 30) / 80));
     this.padMat.emissiveIntensity = 1.4 * this.shown.pad;
     this.sinkMat.emissiveIntensity = 0.55 * sinkHot * sinkHot;
     const heatLvl = Math.max(0, Math.min(1, (this.shown.sink - t.T) / 14 + 0.5 * this.shown.pad));
@@ -944,4 +1051,18 @@ function antennaTexture() {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// Furo de chapa perfurada: um furo redondo por ladrilho (alpha: branco = chapa).
+function perforationCanvas() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = '#000';
+  for (const [x, y] of [[16, 16], [48, 16], [32, 48], [0, 48], [64, 48]]) {
+    g.beginPath(); g.arc(x, y, 10.5, 0, Math.PI * 2); g.fill();
+  }
+  return c;
 }

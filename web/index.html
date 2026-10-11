@@ -32,7 +32,7 @@
     </header>
 
     <section class="stage" aria-label="Câmara térmica em 3D">
-      <div class="stage__canvas" id="scene" role="img" aria-label="Vista 3D da câmara de acrílico com três lâmpadas no teto"></div>
+      <div class="stage__canvas" id="scene" role="img" aria-label="Vista 3D da câmara de policarbonato com cinco lâmpadas no teto, manta e prateleira perfurada"></div>
 
       <div class="readout" aria-live="polite">
         <p class="readout__temp"><svg class="readout__icon icon-thermo" viewBox="0 0 24 40" aria-hidden="true">
@@ -60,10 +60,10 @@
         </div>
         <div class="setpoint__row">
           <button type="button" class="step" id="sp-minus" aria-label="Diminuir 0,5 °C">−</button>
-          <input type="range" id="sp-range" min="25" max="60" step="0.5" value="45" aria-label="Temperatura desejada em graus Celsius">
+          <input type="range" id="sp-range" min="25" max="70" step="0.5" value="45" aria-label="Temperatura desejada em graus Celsius">
           <button type="button" class="step" id="sp-plus" aria-label="Aumentar 0,5 °C">+</button>
         </div>
-        <p class="hint" id="sp-hint">Faixa útil: do ambiente até 60 °C, o limite do acrílico.</p>
+        <p class="hint" id="sp-hint">Faixa útil: do ambiente até 70 °C.</p>
       </section>
 
       <section class="cluster" aria-label="Leituras elétricas">
@@ -114,7 +114,7 @@
           <p class="gauge__label">Dissipador</p>
           <p class="gauge__value"><span id="g-sink">--</span><small>°C</small></p>
           <div class="bar bar--sink" aria-hidden="true"><span id="g-sink-bar"></span></div>
-          <p class="gauge__note" id="g-sink-note">TH2 abre a 100 °C</p>
+          <p class="gauge__note" id="g-sink-note">TH2 abre a 120 °C</p>
         </div>
         <div class="gauge" id="gc-volt">
           <svg class="gauge__icon icon-bolt" viewBox="0 0 32 32" aria-hidden="true">
@@ -242,7 +242,7 @@
           <label>Ki <input type="number" id="ki" step="0.000001" min="0" max="0.1" inputmode="decimal"></label>
           <button type="submit" class="btn">Aplicar ganhos</button>
         </form>
-        <p class="hint">Valores da sintonia SIMC: Kp 0,0637 e Ki 0,000105. Mudanças valem até o ESP32 reiniciar.</p>
+        <p class="hint">Sintonia da câmara de policarbonato: Kp 0,080 e Ki 0,000100. Mudanças valem até o ESP32 reiniciar.</p>
       </details>
 
       <details class="log">

@@ -11,22 +11,23 @@
 const C = {
   SAMPLE_PERIOD_S: 60,
   TIME_SCALE: 60,                 // 1 s de parede = 60 s de modelo
-  SP_MIN: 25, SP_MAX: 60, SP_DEFAULT: 45,
-  CUTOFF_C: 68,
-  KP: 0.0637, KI: 0.000105,
+  SP_MIN: 25, SP_MAX: 70, SP_DEFAULT: 45,
+  CUTOFF_C: 78,
+  KP: 0.080, KI: 0.000100,
   INTEGRAL_BAND_C: 3,
   FEEDFORWARD: true,
-  TAU_S: 640, GAIN_C: 30, AMBIENT_C: 25, FAN_GAIN: 3,
-  HEATER_GAIN_C: 60, HEATER_TAU_S: 300, HEATER_COUPLING: 1, HEATER_TRIP_C: 100, HEATER_RESET_C: 85,
-  HEATER_R: (12 * 12) / 30,       // manta 12 V / 30 W = 4,8 ohms
-  STEP_DUTY_HEATER: 0.4,
-  LAMPS: 3,
-  R_EQ: (12 * 12) / (3 * 5),      // 9,6 ohms
-  BASE_W: 0.9,
-  FAN_W: 1.2,
-  FAN_MIN: 0.30, FAN_ON: 0.10, FAN_OFF: 0.04, FAN_SCALE: 4,
+  TAU_S: 1000, GAIN_C: 16, AMBIENT_C: 25, FAN_GAIN: 5,
+  HEATER_GAIN_C: 50, HEATER_TAU_S: 140, HEATER_COUPLING: 2, HEATER_TRIP_C: 120, HEATER_RESET_C: 100,
+  HEATER_TRIP_CUTS_ALL: true,     // TH2 na cadeia do rele K1
+  HEATER_R: (12 * 12) / 80,       // manta 12 V / 80 W = 1,8 ohms
+  STEP_DUTY_HEATER: 0.6,
+  LAMPS: 5,
+  R_EQ: (12 * 12) / (5 * 5),      // 5,76 ohms
+  BASE_W: 2.7,                    // ESP32 + buck + ventoinha de circulacao M2
+  FAN_W: 1.8,
+  FAN_MIN: 0.30, FAN_ON: 0.10, FAN_OFF: 0.04, FAN_SCALE: 6,
   V_NOM: 12,
-  BATT_CELLS: 3, BATT_WH: 33.3, BATT_RINT: 0.15,
+  BATT_CELLS: 3, BATT_WH: 66.6, BATT_RINT: 0.08,   // 3S2P
 };
 
 const clamp = (x, lo, hi) => (x < lo ? lo : x > hi ? hi : x);
@@ -85,8 +86,8 @@ class PlantModel {
   constructor(tau, gain, amb, fanGain) {
     Object.assign(this, { tau, gain, amb, fanGain, T: amb, Th: amb, hasHeater: false, tripped: false });
   }
-  setHeater(gain, tau, coupling, trip, reset) {
-    Object.assign(this, { hGain: gain, hTau: tau, r: coupling, trip, resetC: reset, hasHeater: true });
+  setHeater(gain, tau, coupling, trip, reset, cutsAll = false) {
+    Object.assign(this, { hGain: gain, hTau: tau, r: coupling, trip, resetC: reset, cutsAll, hasHeater: true });
   }
   step(lamps, heater, fan, dt) {
     lamps = clamp(lamps, 0, 1); heater = clamp(heater, 0, 1); fan = clamp(fan, 0, 1);
@@ -97,7 +98,7 @@ class PlantModel {
     }
     if (this.Th > this.trip) this.tripped = true;
     else if (this.Th < this.resetC) this.tripped = false;
-    if (this.tripped) heater = 0;
+    if (this.tripped) { heater = 0; if (this.cutsAll) lamps = 0; }
     const h = dt / 6;
     for (let i = 0; i < 6; i++) {
       const q = this.r * (this.Th - this.T);
@@ -154,7 +155,7 @@ export class DemoDevice extends EventTarget {
     this.pi.setIntegralBand(C.INTEGRAL_BAND_C);
     this.split = new SplitRange();
     this.plant = new PlantModel(C.TAU_S, C.GAIN_C, C.AMBIENT_C, C.FAN_GAIN);
-    this.plant.setHeater(C.HEATER_GAIN_C, C.HEATER_TAU_S, C.HEATER_COUPLING, C.HEATER_TRIP_C, C.HEATER_RESET_C);
+    this.plant.setHeater(C.HEATER_GAIN_C, C.HEATER_TAU_S, C.HEATER_COUPLING, C.HEATER_TRIP_C, C.HEATER_RESET_C, C.HEATER_TRIP_CUTS_ALL);
     this.heaterOn = true;
     this.heat = 0;
     this.batt = new BatteryModel(C.BATT_CELLS, C.BATT_WH, C.BATT_RINT);

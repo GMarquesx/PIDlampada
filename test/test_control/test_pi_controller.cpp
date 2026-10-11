@@ -4,6 +4,7 @@
 #include "battery_model.h"
 #include "split_range.h"
 #include "seg7.h"
+#include "config.h"
 #include <string.h>
 
 void setUp() {}
@@ -286,6 +287,44 @@ void test_heater_reaches_60() {
   TEST_ASSERT_TRUE(com.heaterTemperature() < 100.0f);                // TH2 nao abre
 }
 
+// Camara de policarbonato com os parametros de include/config.h: a malha
+// fechada alcanca 70 degC, passa menos de 0,5 degC do alvo e o TH2 nao abre.
+void test_config_reaches_setpoint_max() {
+  PlantModel p(PLANT_TAU_S, PLANT_GAIN_C, PLANT_AMBIENT_C, PLANT_FAN_GAIN);
+  p.setHeater(PLANT_HEATER_GAIN_C, PLANT_HEATER_TAU_S, PLANT_HEATER_COUPLING,
+              HEATER_TRIP_C, HEATER_RESET_C, HEATER_TRIP_CUTS_ALL);
+  p.reset(PLANT_AMBIENT_C);
+  PIController pi(PI_KP, PI_KI, -1.0f, 1.0f);
+  pi.setIntegralBand(PI_INTEGRAL_BAND_C);
+  SplitRange sr(FAN_MIN_DUTY, FAN_ON_TH, FAN_OFF_TH, FAN_GAIN_SCALE);
+  const float k = PLANT_GAIN_C + PLANT_HEATER_GAIN_C;
+  float lamps = 0, fan = 0, pico = 0;
+  int chegou = -1;
+  for (int min = 0; min < 90; ++min) {
+    const float t = p.step(lamps, lamps, fan, SAMPLE_PERIOD_S);
+    if (t > pico) pico = t;
+    if (chegou < 0 && t >= SETPOINT_MAX_C - 0.5f) chegou = min;
+    const float ff = (SETPOINT_MAX_C - PLANT_AMBIENT_C) / k;
+    sr.update(pi.update(SETPOINT_MAX_C, t, SAMPLE_PERIOD_S, ff > 1.0f ? 1.0f : ff), lamps, fan);
+  }
+  TEST_ASSERT_TRUE(chegou > 0 && chegou < 60);
+  TEST_ASSERT_TRUE(pico < SETPOINT_MAX_C + 0.5f);
+  TEST_ASSERT_TRUE(pico < TEMP_CUTOFF_C);
+  TEST_ASSERT_FALSE(p.heaterTripped());
+}
+
+// Cadeia de seguranca: com TH2 aberto as lampadas tambem ficam sem energia.
+void test_trip_cuts_lamps_too() {
+  PlantModel p(1000.0f, 16.0f, 25.0f, 5.0f);
+  p.setHeater(50.0f, 140.0f, 2.0f, 40.0f, 35.0f, true);   // TH2 baixo de proposito
+  p.reset(25.0f);
+  for (int i = 0; i < 60 && !p.heaterTripped(); ++i) p.step(1.0f, 1.0f, 0.0f, 60.0f);
+  TEST_ASSERT_TRUE(p.heaterTripped());
+  const float antes = p.temperature();
+  p.step(1.0f, 1.0f, 0.0f, 60.0f);
+  TEST_ASSERT_TRUE(p.temperature() < antes + 0.5f);       // nada aquecendo alem do calor guardado
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_zero_error_gives_zero_output);
@@ -310,5 +349,7 @@ int main(int, char**) {
   RUN_TEST(test_heater_thermostat_trips);
   RUN_TEST(test_heater_speeds_up_warmup);
   RUN_TEST(test_heater_reaches_60);
+  RUN_TEST(test_config_reaches_setpoint_max);
+  RUN_TEST(test_trip_cuts_lamps_too);
   return UNITY_END();
 }

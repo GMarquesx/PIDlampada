@@ -128,7 +128,7 @@
       "top": -215,
       "left": -235,
       "attrs": {
-        "text": "Lampadas W5W - GPIO25, PWM 500 Hz\nno hardware: MOSFET IRLZ44N (Q1)"
+        "text": "5 x W5W (25 W) - GPIO25, PWM 500 Hz\nno hardware: MOSFET IRLZ44N (Q1)"
       }
     },
     {
@@ -137,7 +137,7 @@
       "top": 85,
       "left": -235,
       "attrs": {
-        "text": "Cooler 12 V - GPIO26, PWM 25 kHz\nno hardware: Q2 + diodo 1N5819 (roda livre)"
+        "text": "Cooler 80 mm 12 V - GPIO26, PWM 25 kHz\nno hardware: Q2 + diodo SS14 (roda livre)"
       }
     },
     {
@@ -174,7 +174,45 @@
       "top": 195,
       "left": -235,
       "attrs": {
-        "text": "Manta de silicone 12 V / 30 W - GPIO27\nmesmo comando das lampadas (canal 1)\nno hardware: Q3 IRLZ44N + TH2 KSD301"
+        "text": "Manta de silicone 12 V / 80 W - GPIO27\nmesmo comando das lampadas (canal 1)\nno hardware: Q3 IRLB8721, rele K1 (TH1+TH2)"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "el4",
+      "top": -170,
+      "left": -330,
+      "attrs": {
+        "color": "yellow",
+        "label": "EL4"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "el5",
+      "top": -110,
+      "left": -330,
+      "attrs": {
+        "color": "yellow",
+        "label": "EL5"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r6",
+      "top": -170,
+      "left": -250,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r7",
+      "top": -110,
+      "left": -250,
+      "attrs": {
+        "value": "220"
       }
     }
   ],
@@ -401,6 +439,54 @@
     ],
     [
       "heat1:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D25",
+      "r6:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:D25",
+      "r7:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r6:2",
+      "el4:A",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r7:2",
+      "el5:A",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "el4:C",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "el5:C",
       "esp:GND.2",
       "black",
       [

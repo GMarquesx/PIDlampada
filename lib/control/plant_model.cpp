@@ -8,7 +8,9 @@ PlantModel::PlantModel(float tau_s, float gain_c, float ambient_c, float fan_gai
     : tau_s_(tau_s), gain_c_(gain_c), ambient_c_(ambient_c), fan_gain_(fan_gain),
       temp_c_(ambient_c), sink_c_(ambient_c) {}
 
-void PlantModel::setHeater(float gain_c, float tau_s, float coupling, float trip_c, float reset_c) {
+void PlantModel::setHeater(float gain_c, float tau_s, float coupling, float trip_c, float reset_c,
+                           bool trip_cuts_all) {
+  trip_all_ = trip_cuts_all;
   has_heater_ = gain_c > 0.0f && tau_s > 0.0f && coupling > 0.0f;
   heater_gain_ = gain_c;
   heater_tau_ = tau_s;
@@ -40,7 +42,10 @@ float PlantModel::step(float lamps, float heater, float fan, float dt) {
   // TH2: bimetal no dissipador, com histerese.
   if (sink_c_ > trip_c_) tripped_ = true;
   else if (sink_c_ < reset_c_) tripped_ = false;
-  if (tripped_) heater = 0.0f;
+  if (tripped_) {
+    heater = 0.0f;
+    if (trip_all_) lamps = 0.0f;
+  }
 
   // Dois nos acoplados: passos menores para a troca ar <-> dissipador.
   const float h = dt / kSubSteps;

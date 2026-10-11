@@ -1,5 +1,5 @@
 """
-Blocos do esquema eletrico - PIDlampada (SchemDraw). Revisao atual: C.
+Blocos do esquema eletrico - PIDlampada (SchemDraw). Revisao atual: D.
 
 Cada bloco funcional e' um desenho separado, salvo como SVG. A folha
 (esquema_rev_b.py) posiciona todos na mesma escala - 1 unidade SchemDraw
@@ -42,7 +42,13 @@ class RevMark(elm.Element):
         self.params['drop'] = (0, 0)
 
 
+REV_ATUAL = 'D'
+
+
 def rev(d, xy, letra='B'):
+    # Como num desenho de engenharia, so a revisao atual fica marcada.
+    if letra != REV_ATUAL:
+        return
     # marcadores e textos nao mexem na posicao corrente do desenho
     here, theta = d.here, d.theta
     d += RevMark(letra).at(xy).theta(0)
@@ -78,29 +84,47 @@ def bloco_entrada():
     d = novo()
     # chave de 2 posicoes: comum a direita, ATX em cima, bateria embaixo
     d += (sw := elm.SwitchSpdt2().at((7.0, 21.0)).left())
-    txt(d, (6.6, 22.4), 'SW1  10 A', halign='center', size=17, color='black')
-    rev(d, (4.6, 22.05), 'C')
+    txt(d, (6.6, 22.4), 'SW1  15 A', halign='center', size=17, color='black')
+    rev(d, (4.6, 22.05), 'D')
     ax, ay = sw.c          # entrada ATX
     bx, by = sw.b          # entrada bateria
 
-    # J1: ATX +12 V (amarelo); GND do ATX vai ao terra comum
-    tag(d, 'left', T('J1  ATX +12 V', 'J1  ATX +12 V'), at=(1.4, ay))
+    # J1: ATX +12 V (fonte >= 300 W, trilho de 12 V >= 12 A)
+    tag(d, 'left', 'J1  ATX +12 V', at=(1.4, ay))
     d += elm.Line().at((1.4, ay)).to((ax, ay))
 
-    # BT1: pack 3S - o polo + sobe e entra pela esquerda na outra posicao
+    # BT1: pack 3S2P
     d += (bat := elm.Battery().at((2.6, by - 3.6)).up().length(2.6))
-    ref(d, (2.0, by - 2.1), T('BT1  3S 18650\n12,6 V máx.\nBMS ≥ 8 A', 'BT1  3S 18650\n12.6 V max.\nBMS ≥ 8 A'), halign='right')
+    ref(d, (2.0, by - 2.1), T('BT1  3S2P 18650\n12,6 V máx.\nBMS ≥ 15 A', 'BT1  3S2P 18650\n12.6 V max.\nBMS ≥ 15 A'), halign='right')
+    rev(d, (-3.4, by - 0.4), 'D')
     d += elm.Line().at(bat.end).to((2.6, by))
     d += elm.Line().at((2.6, by)).to((bx, by))
     d += elm.Ground().at(bat.start)
 
-    # comum -> F1 -> D1 -> no protegido
+    # comum -> F1 -> Q4 (protecao de polaridade por P-MOSFET) -> no protegido
     d += elm.Line().at(sw.a).right().length(0.6)
-    d += (f1 := elm.Fuse().right().length(2.8).label(T('F1\n6,3 A retard.', 'F1\n6.3 A slow'), loc='top', ofst=0.3))
-    d += (d1 := elm.Schottky().right().length(2.8).label('D1  SB560', loc='top', ofst=0.3))
-    rev(d, (f1.center[0] - 0.4, f1.center[1] - 1.1), 'C')
-    rev(d, (d1.center[0] - 0.4, d1.center[1] - 1.1), 'C')
-    d += elm.Line().right().length(0.8)
+    d += (f1 := elm.Fuse().right().length(2.8).label(T('F1  15 A\nlâmina retard.', 'F1  15 A\nblade, slow'), loc='top', ofst=0.3))
+    rev(d, (f1.center[0] - 0.4, f1.center[1] - 1.1), 'D')
+    d += elm.Line().right().length(0.6)
+    x0, y0 = d.here
+    xs = x0 + 2.1                                   # fonte do Q4
+    d += (q4 := elm.PFet(bulk=False).at((xs, y0)).theta(-90))   # dreno a esquerda, fonte a direita
+    ref(d, (xs - 1.9, y0 + 1.15), T('Q4  IRF4905', 'Q4  IRF4905'))
+    rev(d, (xs + 1.1, y0 + 0.75), 'D')
+    gx, gy = q4.gate
+    yg = y0 - 2.4
+    d += elm.Line().at(q4.gate).to((gx, yg))
+    d += elm.Dot().at((gx, yg))
+    d += elm.Resistor().at((gx, yg)).down().length(2.6)
+    ref(d, (gx - 0.45, yg - 1.3), 'R14\n10 kΩ', halign='right')
+    d += elm.Ground()
+    xz = xs + 0.9
+    d += elm.Line().at((gx, yg)).to((xz, yg))
+    d += elm.Zener().at((xz, yg)).up().to((xz, y0))
+    ref(d, (xz + 0.4, yg + 1.2), 'D4  15 V')
+    d += elm.Line().at((xs, y0)).to((xz, y0))
+    d += elm.Dot().at((xz, y0))
+    d += elm.Line().at((xz, y0)).right().length(2.8)
     d += (na := elm.Dot())
 
     d += elm.Zener().at(na.center).down().length(3.2)
@@ -111,7 +135,8 @@ def bloco_entrada():
     d += elm.Line().at(na.center).right().length(3.0)
     d += (nb := elm.Dot())
     d += elm.Capacitor(polar=True).down().length(3.2)
-    ref(d, (nb.center[0] + 0.35, nb.center[1] - 1.6), 'C1\n1000 µF\n25 V')
+    ref(d, (nb.center[0] + 0.35, nb.center[1] - 1.6), 'C1\n2200 µF\n25 V')
+    rev(d, (nb.center[0] + 2.3, nb.center[1] - 0.9), 'D')
     d += elm.Line().down().length(0.8)
     d += (g2 := elm.Dot())
 
@@ -127,6 +152,10 @@ def bloco_entrada():
 
     d += elm.Line().at(nc.center).right().length(1.8)
     d += elm.Vdd().label('+12 V PROT', ofst=0.15)
+    txt(d, (8.0, 14.6), T('Q4: com a polaridade certa o MOSFET conduz (20 mΩ: ~1,7 W a 9 A, com dissipador).\n'
+                          'Invertida, fica cortado. Um Schottky dissiparia ~5 W nessa corrente.',
+                          'Q4: with correct polarity the MOSFET conducts (20 mΩ: ~1.7 W at 9 A, heatsinked).\n'
+                          'Reversed, it stays off. A Schottky would dissipate ~5 W at this current.'))
     return d
 
 
@@ -284,37 +313,28 @@ def bloco_medicao():
 # ---------------------------------------------------------------------
 def bloco_potencia():
     d = novo()
-    XL, XR, YT = 10.4, 16.0, 0.0
-    d += elm.Vdd().at((0, YT)).label('+12 V PROT', ofst=0.15)
-    d += elm.Line().at((0, YT)).right().length(1.8)
-    d += (th1 := elm.Switch(nc=True).right().length(3.4).label(T('TH1  KSD301\n70 °C · NF · 10 A', 'TH1  KSD301\n70 °C · NC · 10 A'),
-                                                loc='top', ofst=0.35))
-    rev(d, (th1.center[0] - 0.4, th1.center[1] - 1.15), 'C')
-    d += elm.Line().right().to((XL, YT))
+    XL, XR, YT, DY = 6.0, 11.6, 0.0, 2.1
+    tag(d, 'right', '+12V_TH', at=(0, YT))
+    d += elm.Line().at((TAG_W, YT)).right().to((XL, YT))
     d += elm.Dot()
-    # depois do TH1 tambem sai a alimentacao da manta (bloco [9])
-    XT = 7.4
-    d += elm.Dot().at((XT, YT))
-    d += elm.Line().at((XT, YT)).down().length(2.2)
-    tag(d, 'down', '+12V_TH')
-
-    for i, y in enumerate([YT, YT - 2.8, YT - 5.6]):
-        d += elm.Lamp().at((XL, y)).right().to((XR, y)).label(f'EL{i + 1}', loc='top', ofst=0.3)
-    d += elm.Line().at((XL, YT)).down().to((XL, YT - 5.6))
-    d += elm.Dot().at((XL, YT - 2.8))
-    d += elm.Line().at((XR, YT)).down().to((XR, YT - 5.6))
+    ys = [YT - i * DY for i in range(5)]
+    for i, y in enumerate(ys):
+        d += elm.Lamp().at((XL, y)).right().to((XR, y)).label(f'EL{i + 1}', loc='top', ofst=0.25)
+        if 0 < i < 4:
+            d += elm.Dot().at((XL, y))
+            d += elm.Dot().at((XR, y))
+    rev(d, (XR + 0.5, ys[3] - 0.3), 'D')
+    d += elm.Line().at((XL, YT)).down().to((XL, ys[-1]))
+    d += elm.Line().at((XR, YT)).down().to((XR, ys[-1]))
     d += elm.Dot().at((XR, YT))
-    d += elm.Dot().at((XR, YT - 2.8))
-    txt(d, (XR + 0.8, YT - 1.4), T('3 × W5W  12 V / 5 W\n15 W · 1,25 A total\ncarga RESISTIVA: sem\ndiodo de roda livre',
-                                   '3 × W5W  12 V / 5 W\n15 W · 1.25 A total\nRESISTIVE load: no\nflyback diode needed'))
+    txt(d, (XR + 1.6, YT - 0.6), T('5 × W5W  12 V / 5 W\n25 W · 2,1 A total\ncarga RESISTIVA: sem\ndiodo de roda livre',
+                                   '5 × W5W  12 V / 5 W\n25 W · 2.1 A total\nRESISTIVE load: no\nflyback diode needed'))
 
-    d += (q1 := elm.NFet(bulk=False).right().reverse().at((XR, YT - 8.2)).anchor('drain'))
-    ref(d, (XR + 1.1, YT - 8.9), T('Q1  IRLZ44N\nlogic-level\nRDS(on) 28 mΩ\n@ VGS 4,5 V',
-                                   'Q1  IRLZ44N\nlogic-level\nRDS(on) 28 mΩ\n@ VGS 4.5 V'))
-    d += elm.Line().at((XR, YT - 5.6)).to(q1.drain)
+    d += (q1 := elm.NFet(bulk=False).right().reverse().at((XR, ys[-1] - 2.4)).anchor('drain'))
+    ref(d, (XR + 1.1, ys[-1] - 3.1), T('Q1  IRLZ44N\nlogic-level', 'Q1  IRLZ44N\nlogic-level'))
+    d += elm.Line().at((XR, ys[-1])).to(q1.drain)
     d += elm.Line().at(q1.source).down().length(1.0)
     d += elm.Ground()
-
     gx, gy = q1.gate
     d += elm.Line().at(q1.gate).left().to((gx - 1.2, gy))
     d += (ng := elm.Dot())
@@ -338,8 +358,8 @@ def bloco_cooler():
     d += (ft := elm.Dot())
     d += elm.Motor().at((XF, YF)).down().length(3.4)
     d += (fb := elm.Dot())
-    ref(d, (XF - 0.8, YF - 1.7), T('M1\ncooler 12 V\n40 mm · 0,1 A', 'M1\n12 V fan\n40 mm · 0.1 A'), halign='right')
-    rev(d, (XF - 1.5, YF + 0.2))
+    ref(d, (XF - 0.8, YF - 1.7), T('M1  exaustão\n80 mm · 12 V\n0,15 A', 'M1  exhaust\n80 mm · 12 V\n0.15 A'), halign='right')
+    rev(d, (XF - 2.6, YF + 0.2), 'D')
 
     d += elm.Line().at(ft.center).right().length(2.8)
     d += elm.Schottky().at((XF + 2.8, YF - 3.4)).up().length(3.4)
@@ -367,8 +387,24 @@ def bloco_cooler():
     ref(d, (ng2.center[0] - 0.45, ng2.center[1] - 1.4), 'R10\n10 kΩ', halign='right')
     d += elm.Ground()
 
-    txt(d, (XF + 6.6, YF - 4.3), T('Motor = carga INDUTIVA.\nAlimentado ANTES do TH1:\nem sobretemperatura o\ncooler continua (nota 2).',
-                                   'Motor = INDUCTIVE load.\nFed BEFORE TH1: on\nover-temperature the\nfan keeps running (note 2).'))
+    txt(d, (XF + 6.6, YF - 4.3), T('Motor = carga INDUTIVA.\nFora da cadeia K1: em\nsobretemperatura as\nventoinhas continuam (nota 2).',
+                                   'Motor = INDUCTIVE load.\nOutside the K1 chain: on\nover-temperature the\nfans keep running (note 2).'))
+    # M2: circulacao interna, sempre ligada (nao e' chaveada: sem diodo)
+    XM = XF + 15.0
+    d += elm.Vdd().at((XM, YF + 1.0)).label('+12 V PROT', ofst=0.15)
+    d += elm.Line().at((XM, YF + 1.0)).down().length(1.0)
+    d += (m2t := elm.Dot())
+    d += elm.Motor().at((XM, YF)).down().length(3.4)
+    d += (m2b := elm.Dot())
+    d += elm.Ground().at(m2b.center)
+    d += elm.Line().at(m2t.center).right().length(2.6)
+    d += elm.Capacitor().down().length(3.4)
+    d += elm.Line().left().length(2.6)
+    ref(d, (XM + 3.05, YF - 1.7), 'C11\n100 nF')
+    ref(d, (XM - 0.8, YF - 1.7), T('M2  circulação\n60 mm · 12 V\nsempre ligada', 'M2  circulation\n60 mm · 12 V\nalways on'), halign='right')
+    rev(d, (XM - 2.7, YF + 0.6), 'D')
+    txt(d, (XM - 2.0, YF - 5.6), T('Sopra nas aletas, sob a prateleira:\nespalha o calor da manta (nota 9).',
+                                   'Blows through the fins, under the shelf:\nspreads the heater output (note 9).'))
     txt(d, (XF + 6.6, YF - 8.6), T('PWM 25 kHz, LEDC canal 2.\nRotação mínima 30 %.',
                                    'PWM 25 kHz, LEDC channel 2.\nMinimum speed 30 %.'))
     return d
@@ -412,14 +448,14 @@ def bloco_display():
 def bloco_manta():
     d = novo()
     X = 0.0
-    tag(d, 'down', '+12V_TH', at=(X, 2.4))
-    d += (th2 := elm.Switch(nc=True).at((X, 2.4 - TAG_W)).down().length(2.4))
-    ref(d, (X + 0.55, th2.center[1]), T('TH2  KSD301\n100 °C · NF\nno dissipador', 'TH2  KSD301\n100 °C · NC\non heatsink'))
-    rev(d, (X - 1.6, th2.center[1] + 0.6), 'C')
-    d += (h1 := elm.Resistor().down().length(2.6))
-    ref(d, (X + 0.55, h1.center[1]), T('H1  manta silicone\n12 V · 30 W · 4,8 Ω', 'H1  silicone heater\n12 V · 30 W · 4.8 Ω'))
+    tag(d, 'right', '+12V_TH', at=(X - 1.2 - TAG_W, 1.6))
+    d += elm.Line().at((X - 1.2, 1.6)).right().to((X, 1.6))
+    d += (h1 := elm.Resistor().at((X, 1.6)).down().length(3.0))
+    ref(d, (X + 0.55, h1.center[1]), T('H1  manta silicone\n200 × 200 mm\n12 V · 80 W · 1,8 Ω', 'H1  silicone heater\n200 × 200 mm\n12 V · 80 W · 1.8 Ω'))
+    rev(d, (X - 1.6, h1.center[1] - 0.5), 'D')
     d += (q3 := elm.NFet(bulk=False).right().reverse().anchor('drain'))
-    ref(d, (X + 1.1, q3.center[1] - 0.2), 'Q3  IRLZ44N')
+    ref(d, (X + 1.1, q3.center[1] - 0.2), T('Q3  IRLB8721\n8,7 mΩ @ 4,5 V', 'Q3  IRLB8721\n8.7 mΩ @ 4.5 V'))
+    rev(d, (X + 4.6, q3.center[1] + 0.4), 'D')
     d += elm.Line().at(q3.source).down().length(0.8)
     d += elm.Ground()
     gx, gy = q3.gate
@@ -431,10 +467,46 @@ def bloco_manta():
     d += elm.Resistor().at(ng.center).down().length(2.6)
     ref(d, (ng.center[0] - 0.45, ng.center[1] - 1.3), 'R13\n10 kΩ', halign='right')
     d += elm.Ground()
-    txt(d, (X + 6.6, 1.6), T('Carga RESISTIVA: sem diodo de\nroda livre. Mesmo comando das\nlâmpadas (LEDC canal 1, mesmo\ntimer do canal 0).',
-                            'RESISTIVE load: no flyback\ndiode. Same command as the\nlamps (LEDC channel 1, same\ntimer as channel 0).'))
-    txt(d, (X + 6.6, -3.6), T('Manta colada sob dissipador\naletado; isolante embaixo\nprotege a base (nota 9).',
-                             'Heater bonded under a finned\nheatsink; insulation below\nprotects the base (note 9).'))
+    txt(d, (X + 7.0, 1.8), T('Carga RESISTIVA: sem diodo de roda\nlivre. Mesmo comando das lâmpadas\n(LEDC canal 1, mesmo timer do 0).\n6,7 A: Q3 dissipa ~0,4 W.',
+                            'RESISTIVE load: no flyback diode.\nSame command as the lamps\n(LEDC channel 1, same timer as 0).\n6.7 A: Q3 dissipates ~0.4 W.'))
+    txt(d, (X + 7.0, -3.4), T('Manta colada sob dois dissipadores\naletados; isolante embaixo; prateleira\nperfurada por cima (nota 9).',
+                             'Heater bonded under two finned\nheatsinks; insulation below;\nperforated shelf above (note 9).'))
+    return d
+
+
+# ---------------------------------------------------------------------
+# [10] CADEIA DE SEGURANCA - TH1 + TH2 em serie com a bobina do rele K1
+# ---------------------------------------------------------------------
+def bloco_seguranca():
+    d = novo()
+    d += elm.Vdd().at((0, 8.0)).label('+12 V PROT', ofst=0.15)
+    d += (th1 := elm.Switch(nc=True).at((0, 8.0)).down().length(2.4))
+    ref(d, (0.55, th1.center[1]), T('TH1  KSD301 85 °C · NF\nno ar, perto do teto', 'TH1  KSD301 85 °C · NC\nin the air, near the top'))
+    d += (th2 := elm.Switch(nc=True).down().length(2.4))
+    ref(d, (0.55, th2.center[1]), T('TH2  KSD301 120 °C · NF\nno dissipador', 'TH2  KSD301 120 °C · NC\non the heatsink'))
+    d += elm.Dot()
+    d += (coil := elm.Inductor().down().length(2.6))
+    d += elm.Dot()
+    d += elm.Line().down().length(0.5)
+    d += elm.Ground()
+    ref(d, (0.75, 1.15), T('K1  relé automotivo\n12 V / 30 A (bobina)', 'K1  automotive relay\n12 V / 30 A (coil)'))
+    rev(d, (-1.4, 4.0), 'D')
+    # D5: roda livre da bobina, catodo no lado +
+    d += elm.Line().at((0, 3.2)).to((-2.6, 3.2))
+    d += elm.Diode().at((-2.6, 0.6)).up().to((-2.6, 3.2))
+    d += elm.Line().at((-2.6, 0.6)).to((0, 0.6))
+    ref(d, (-3.05, 1.9), 'D5\n1N4007', halign='right')
+    # contato NA do K1, ligado pela linha tracejada
+    XS = 10.0
+    d += elm.Vdd().at((XS, 5.4)).label('+12 V PROT', ofst=0.15)
+    d += elm.Line().at((XS, 5.4)).down().to((XS, 3.1))
+    d += elm.Switch().at((XS, 3.1)).down().to((XS, 0.7))
+    d += elm.Line().at((XS, 0.7)).down().length(0.4)
+    tag(d, 'right', '+12V_TH')
+    d += elm.Line(ls='--').at((0.75, 1.9)).to((XS - 0.55, 1.9))
+    ref(d, (XS + 0.5, 1.9), T('K1\ncontato NA', 'K1\nNO contact'))
+    txt(d, (XS + 4.5, 7.6), T('Qualquer termostato que abra\nsolta K1: lâmpadas e manta\nficam sem energia. Ventoinhas,\nESP32 e display continuam.\nD5: a bobina é INDUTIVA.',
+                              'Either thermostat opening\ndrops K1: lamps and heater\nlose power. Fans, ESP32 and\ndisplay keep running.\nD5: the coil is INDUCTIVE.'))
     return d
 
 
@@ -445,10 +517,11 @@ def blocos():
         '3': (T('CONTROLADOR', 'CONTROLLER'), bloco_controlador),
         '4': (T('SENSOR DE TEMPERATURA', 'TEMPERATURE SENSOR'), bloco_sensor),
         '5': (T('MEDIÇÃO ANALÓGICA', 'ANALOG SENSING'), bloco_medicao),
-        '6': (T('POTÊNCIA · LÂMPADAS (LOW-SIDE)', 'POWER STAGE · LAMPS (LOW-SIDE)'), bloco_potencia),
-        '7': (T('COOLER DE EXAUSTÃO (LOW-SIDE)', 'EXHAUST FAN (LOW-SIDE)'), bloco_cooler),
+        '6': (T('LÂMPADAS (LOW-SIDE)', 'LAMPS (LOW-SIDE)'), bloco_potencia),
+        '7': (T('VENTILAÇÃO · EXAUSTÃO E CIRCULAÇÃO', 'VENTILATION · EXHAUST AND CIRCULATION'), bloco_cooler),
         '8': (T('DISPLAY DE TEMPERATURA', 'TEMPERATURE DISPLAY'), bloco_display),
         '9': (T('MANTA DE AQUECIMENTO (LOW-SIDE)', 'BASE HEATER (LOW-SIDE)'), bloco_manta),
+        '10': (T('CADEIA DE SEGURANÇA TÉRMICA', 'THERMAL SAFETY CHAIN'), bloco_seguranca),
     }
 
 

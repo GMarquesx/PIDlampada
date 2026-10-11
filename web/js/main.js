@@ -15,7 +15,7 @@ const DEFAULTS = {
   broker: 'wss://broker.hivemq.com:8884/mqtt',
   device: 'gmarques-01',
 };
-const SP_MIN = 25, SP_MAX = 60;
+const SP_MIN = 25, SP_MAX = 70;
 
 const $ = (id) => document.getElementById(id);
 const fmt = (x, d = 1) => Number(x).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -180,7 +180,7 @@ function renderIcons(d) {
 
   if (d.th != null) {
     const sinkIcon = document.querySelector('.icon-sink');
-    const hot = Math.max(0, Math.min(1, (d.th - 25) / 75));
+    const hot = Math.max(0, Math.min(1, (d.th - 25) / 95));
     sinkIcon.style.setProperty('--hot', hot.toFixed(3));
     sinkIcon.classList.toggle('is-warm', d.th > 30);
     sinkIcon.classList.toggle('is-trip', !!d.trip);
@@ -202,8 +202,8 @@ function renderIcons(d) {
   $('i-pwm').setAttribute('d', pwmPath(lamps));
   document.querySelector('.icon-pwm').classList.toggle('is-on', lamps > 0.01);
 
-  // ponteiro: 0 W a -80 graus, 50 W a +80 graus (lampadas + manta + cooler)
-  const ang = -80 + Math.min(1, Math.max(0, d.p / 50)) * 160;
+  // ponteiro: 0 W a -80 graus, 120 W a +80 graus (5 lampadas + manta de 80 W + ventoinhas)
+  const ang = -80 + Math.min(1, Math.max(0, d.p / 120)) * 160;
   $('i-needle').style.transform = `rotate(${ang.toFixed(1)}deg)`;
 
   const src = $('i-src');
@@ -224,7 +224,7 @@ function renderIcons(d) {
 const MODE_TEXT = {
   PI: 'O controlador PI aquece com as lâmpadas e a manta e, se a câmara passar do alvo, liga o cooler para jogar o ar quente para fora.',
   MANUAL: 'Você define o aquecimento (lâmpadas + manta) e o cooler diretamente. O controle automático fica desligado.',
-  DEGRAU: 'Malha aberta com o cooler parado: aquecimento a 40 % com a manta (100 % só com lâmpadas). A curva de subida dá a constante de tempo da câmara.',
+  DEGRAU: 'Malha aberta com o cooler parado: aquecimento a 60 % com a manta (100 % só com lâmpadas). A curva de subida dá a constante de tempo da câmara.',
   FALHA: 'A temperatura passou do limite de segurança: o firmware desligou lâmpadas e manta e ligou o cooler no máximo. Escolha Automático para retomar.',
 };
 const MODE_BADGE = { MANUAL: 'Manual', DEGRAU: 'Ensaio de degrau', FALHA: 'Falha: lâmpadas desligadas' };
@@ -251,14 +251,14 @@ function render(d) {
 
   const amb = d.amb ?? 25;
   const hon = d.hon === 1;
-  const reach = amb + (hon ? 90 : 30);
+  const reach = amb + (hon ? 66 : 16);
   $('sp-hint').textContent = d.sp > reach - 0.5
     ? `Esse alvo está acima do que as lâmpadas alcançam sozinhas (cerca de ${fmt(reach, 0)} °C com o ambiente atual). Ligue a manta ou o erro não zera.`
     : d.sp < amb + 0.5
     ? `Esse alvo está no nível do ambiente (${fmt(amb)} °C) ou abaixo. O cooler só troca o ar de dentro pelo de fora, então a câmara não esfria abaixo do ambiente.`
     : hon
-    ? 'Faixa útil: do ambiente até 60 °C, o limite do acrílico. Com a manta, a câmara chega lá em poucos minutos.'
-    : `Só lâmpadas: chega a cerca de ${fmt(reach, 0)} °C. Acima do alvo, o cooler ajuda a esfriar.`;
+    ? 'Faixa útil: do ambiente até 70 °C (policarbonato e LM35 com folga). Acima do alvo, o cooler ajuda a esfriar.'
+    : `Só lâmpadas: numa câmara deste tamanho elas chegam a cerca de ${fmt(reach, 0)} °C. A manta faz o trabalho pesado.`;
 
   // instrumentos
   $('g-duty').textContent = fmt(d.u * 100, 0);
@@ -268,16 +268,16 @@ function render(d) {
   $('g-heat').textContent = d.hon === 0 ? '–' : fmt(heat * 100, 0);
   $('g-heat-bar').style.width = `${Math.round(heat * 100)}%`;
   $('g-heat-note').textContent = d.hon === 0 ? 'desligada (só lâmpadas)'
-    : d.trip ? 'cortada pelo TH2'
-    : heat > 0.01 ? `${fmt(30 * heat * Math.pow((d.v || 12) / 12, 2), 1)} W na base` : 'fria';
+    : d.trip ? 'cortada pelo TH2 (relé K1)'
+    : heat > 0.01 ? `${fmt(80 * heat * Math.pow((d.v || 12) / 12, 2), 1)} W na base` : 'fria';
   const sink = d.th;
   $('gc-sink').hidden = sink == null;
   if (sink != null) {
     $('g-sink').textContent = fmt(sink, 0);
-    const frac = Math.max(0, Math.min(1, (sink - 20) / 80));
+    const frac = Math.max(0, Math.min(1, (sink - 20) / 100));
     $('g-sink-bar').style.width = `${Math.round(frac * 100)}%`;
     $('g-sink-bar').parentElement.toggleAttribute('data-trip', !!d.trip);
-    $('g-sink-note').textContent = d.trip ? 'TH2 aberto: esfriando até 85 °C' : `${fmt(100 - sink, 0)} °C até o TH2 abrir`;
+    $('g-sink-note').textContent = d.trip ? 'TH2 aberto: K1 cortou o aquecimento até 100 °C' : `${fmt(120 - sink, 0)} °C até o TH2 abrir`;
   }
   const fan = d.fan ?? 0;
   $('g-fan').textContent = fmt(fan * 100, 0);

@@ -38,7 +38,7 @@ void begin() {
   analogSetPinAttenuation(PIN_SETPOINT, ADC_11db);
 #if SENSOR_SOURCE == SENSOR_PLANT
   g_plant.setHeater(PLANT_HEATER_GAIN_C, PLANT_HEATER_TAU_S, PLANT_HEATER_COUPLING,
-                    HEATER_TRIP_C, HEATER_RESET_C);
+                    HEATER_TRIP_C, HEATER_RESET_C, HEATER_TRIP_CUTS_ALL);
   g_plant.reset(PLANT_AMBIENT_C);
 #endif
 }

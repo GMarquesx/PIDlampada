@@ -2,14 +2,18 @@
 
 | Arquivo | Conteudo |
 |---------|----------|
-| `Proposta_Camara_Termica_ESP32.pdf` | Folha A4 de proposta — vista isometrica, BOM, cadeia de potencia |
-| `Esquema_Eletrico_Rev_A.pdf` | Rev. A — seis blocos, pinagem, notas de projeto |
-| `esquema_rev_a.py` | Script que gera a Rev. A (SchemDraw) |
-| `Esquema_Eletrico_Rev_B.pdf`, `Electrical_Schematic_Rev_B_EN.pdf` | Rev. B (historico): cooler, display, LM35 |
-| `Esquema_Eletrico_Rev_C.pdf` | **Revisao atual**, desenho PIDL-ESQ-001, A3, 2 folhas: nove blocos com tabela de revisoes e carimbo (folha 1); pinagem, notas de projeto, notas gerais, redes de alimentacao e lista de materiais (folha 2) |
-| `Electrical_Schematic_Rev_C_EN.pdf` | O mesmo desenho em ingles |
-| `esquema_blocos.py` | Os nove blocos do esquema em SchemDraw (textos PT/EN) |
-| `esquema_eletrico.py` | Monta as folhas (moldura com zonas, revisoes, carimbo, tabelas) e gera os dois PDFs |
+| `Proposta_Camara_Termica_ESP32.pdf` | Folha A4 de proposta (camara compacta original) |
+| `Esquema_Eletrico_Rev_D.pdf` | **Revisao atual** do PIDL-ESQ-001, A3, 3 folhas: potencia com tabela de revisoes, redes de alimentacao e condutores (folha 1); controle e medicao, notas gerais e interligacao das redes (folha 2); pinagem, notas de projeto e lista de materiais eletrica (folha 3) |
+| `Electrical_Schematic_Rev_D_EN.pdf` | O mesmo desenho em ingles |
+| `Desenho_Mecanico_Rev_A.pdf` | PIDL-MEC-001, A3, 2 folhas: corte A-A da camara de policarbonato (1:2) com baloes, lista de materiais mecanica, dimensionamento termico e notas de montagem (folha 1); plano de corte da chapa 1000 x 1000 (1:10), furacao dos cinco paineis e da prateleira (1:4), cantoneiras e tabela de furos (folha 2) |
+| `Mechanical_Drawing_Rev_A_EN.pdf` | O mesmo desenho em ingles |
+| `Esquema_Eletrico_Rev_A/B/C.pdf`, `Electrical_Schematic_Rev_B/C_EN.pdf` | Revisoes anteriores (historico) |
+| `esquema_blocos.py` | Os dez blocos do esquema em SchemDraw (textos PT/EN) |
+| `esquema_dados.py` | Revisoes, textos, pinagem, notas, redes e lista de materiais do esquema |
+| `esquema_eletrico.py` | Monta as 3 folhas do esquema e gera os dois PDFs |
+| `desenho_mecanico.py` | Desenha o PIDL-MEC-001 (corte, paineis, furos em `FUROS`) e gera os dois PDFs |
+| `folha_a3.py` | Moldura com zonas, carimbo e tabela de revisoes, comuns aos dois desenhos |
+| `esquema_rev_a.py` | Script da Rev. A (historico) |
 
 Para regerar os PDFs apos uma alteracao:
 
@@ -18,14 +22,66 @@ pip install schemdraw playwright
 python -m playwright install chromium
 cd docs\hardware
 python esquema_eletrico.py
+python desenho_mecanico.py
 ```
 
-Sem o Playwright, o script deixa `build\folha_pt.html` e `build\folha_en.html`:
-abra no navegador e imprima em PDF (A3 paisagem, margens "nenhuma").
+Sem o Playwright, os scripts deixam o HTML em `build\`: abra no navegador e
+imprima em PDF (A3 paisagem, margens "nenhuma").
 
-Para uma nova revisao: acrescente o texto `rev_d` em `TXT` e a linha em
-`tabela_revisoes()`, atualize `REV` e as datas, e marque com `rev(d, (x, y), 'D')`
-o que mudou em `esquema_blocos.py`.
+Para uma nova revisao do esquema: acrescente a linha em `REVISOES`
+(`esquema_dados.py`), atualize `REV` e `DATA`, mude `REV_ATUAL` em
+`esquema_blocos.py` e marque com `rev(d, (x, y), 'E')` o que mudou.
+
+## O que mudou da Rev. C para a Rev. D
+
+A camara compacta de acrilico virou uma caixa de **policarbonato compacto
+cristal de 6 mm, 250 x 250 x 250 mm** (desenho PIDL-MEC-001), com a manta e os
+dissipadores no piso e uma prateleira de aluminio perfurado a 70 mm por cima,
+para as amostras. A caixa grande perde ~1,6 W/K, entao a potencia subiu:
+
+- **[6] Lampadas:** 3 -> 5 x W5W (25 W). Sozinhas elas so levam a camara a
+  ambiente + 16 degC; cinco e' um bom limite (cada uma a mais da ~3 degC).
+- **[9] Manta:** H1 de 100 x 100 / 30 W para **200 x 200 mm / 80 W** (1,8 ohm,
+  6,7 A), sob dois dissipadores aletados de 200 x 100 mm. Q3 passa a IRLB8721
+  (8,7 mohm: ~0,4 W a 6,7 A).
+- **[7] Ventilacao:** cooler M1 de 40 para **80 mm**; nova ventoinha de
+  circulacao **M2 60 mm**, sempre ligada, soprando ao longo das aletas (C11).
+- **[10] Cadeia de seguranca (novo):** com 8,8 A de carga os termostatos nao
+  podem mais passar a corrente. TH1 (KSD301 85 degC, no ar) e TH2 (KSD301
+  120 degC, no dissipador) ficam em serie com a **bobina do rele automotivo
+  K1** (~80 mA), com D5 1N4007 de roda livre. O contato NA do K1 gera a rede
+  `+12V_TH` (lampadas + manta). Ventoinhas e ESP32 ficam fora da cadeia.
+- **[1] Entrada:** D1 trocado pelo **P-MOSFET Q4 IRF4905** (R14 10 k, zener D4
+  15 V): 20 mohm em vez de ~5 W de perda num Schottky. F1 15 A lamina, SW1
+  15 A, C1 2200 uF, BT1 3S2P (BMS >= 15 A).
+- **Firmware:** setpoint maximo 60 -> 70 degC, corte 68 -> 78 degC, Kp 0,080,
+  Ki 0,000100; o rele aberto corta lampadas e manta tambem no modelo.
+
+## BOM — itens novos ou alterados da Rev. D
+
+| Ref | Peca | Qtd |
+|-----|------|-----|
+| EL4, EL5 | Lampada W5W 12 V 5 W + soquete T10 | 2 |
+| H1 | Manta de silicone 200 x 200 mm 12 V 80 W (substitui a de 30 W) | 1 |
+| — | Dissipador aletado de aluminio 200 x 100 x 30 mm | 2 |
+| Q3 | IRLB8721 (substitui o IRLZ44N) | 1 |
+| M1 | Ventoinha 80 x 80 x 25 mm 12 V (substitui a de 40 mm) | 1 |
+| M2 | Ventoinha 60 x 60 x 15 mm 12 V | 1 |
+| C11 | 100 nF ceramico | 1 |
+| K1 | Rele automotivo 12 V 30 A NA + soquete | 1 |
+| D5 | 1N4007 | 1 |
+| TH1 | KSD301 85 degC NF (substitui o de 70 degC) | 1 |
+| TH2 | KSD301 120 degC NF (substitui o de 100 degC) | 1 |
+| Q4 | IRF4905 + dissipador pequeno (substitui o D1) | 1 |
+| D4 | Zener 15 V 0,5 W | 1 |
+| R14 | 10 k 1/4 W | 1 |
+| F1 | Fusivel lamina 15 A + porta-fusivel | 1 |
+| SW1 | Chave SPDT 15 A | 1 |
+| C1 | 2200 uF 25 V (substitui o de 1000 uF) | 1 |
+| BT1 | Pack 3S2P 18650 alto dreno, BMS >= 15 A | 1 |
+
+A parte mecanica (chapa de PC, cantoneiras, base de MDF, prateleira,
+dobradicas, parafusos) esta na lista do PIDL-MEC-001.
 
 ## O que mudou da Rev. B para a Rev. C
 

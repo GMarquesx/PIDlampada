@@ -6,7 +6,7 @@
  */
 
 // ---------------------------------------------------------------- pinagem
-// Igual ao esquema eletrico Rev. C (docs/hardware/Esquema_Eletrico_Rev_C.pdf).
+// Igual ao esquema eletrico Rev. D (docs/hardware/Esquema_Eletrico_Rev_D.pdf).
 constexpr int PIN_PWM_GATE = 25;  // LEDC -> gate do IRLZ44N
 constexpr int PIN_TEMP     = 32;  // ADC1_CH4 <- LM35 (ou NTC no Wokwi)
 constexpr int PIN_SETPOINT = 33;  // ADC1_CH5 <- potenciometro (opcional)
@@ -43,27 +43,26 @@ constexpr int   FAN_PWM_MAX        = (1 << FAN_PWM_RESOLUTION) - 1;
 constexpr float FAN_MIN_DUTY = 0.30f;
 constexpr float FAN_ON_TH    = 0.10f;
 constexpr float FAN_OFF_TH   = 0.04f;
-// Ganho proprio do lado frio: com o Kp das lampadas o cooler desligaria
-// ainda 4 degC acima do alvo. Com 4x, a queda de 45 para 32 degC cai de
-// 13 para 7 min, sem passar do alvo (medido em lib/control nos testes).
-constexpr float FAN_GAIN_SCALE = 4.0f;
+// Ganho proprio do lado frio: com o Kp do aquecimento o cooler desligaria
+// varios degC acima do alvo. Na camara de policarbonato, 6x leva a queda de
+// 70 para 35 degC a 8 min sem passar do alvo.
+constexpr float FAN_GAIN_SCALE = 6.0f;
 
 // --------------------------------------------------------------- controle
 constexpr float SETPOINT_DEFAULT_C = 45.0f;
 constexpr float SETPOINT_MIN_C     = 25.0f;
-constexpr float SETPOINT_MAX_C     = 60.0f;     // teto pratico do PMMA
-constexpr float TEMP_CUTOFF_C      = 68.0f;     // corte por firmware (TH1 = 70)
+constexpr float SETPOINT_MAX_C     = 70.0f;     // policarbonato aguenta ~115 degC; LM35DZ ate 100
+constexpr float TEMP_CUTOFF_C      = 78.0f;     // corte por firmware (TH1 = 85, rele K1)
 
 constexpr float SAMPLE_PERIOD_S = 60.0f;        // periodo do PI (tau/10)
 
 // SIMC (analise/identificacao.ipynb) sobre o ensaio de exemplo.
 // PROVISORIO: refazer com o ensaio de degrau do hardware real.
-// Com a manta o ganho triplica (30 -> 90 degC), mas o dissipador acrescenta
-// ~300 s de atraso; em simulacao os mesmos ganhos continuam os melhores
-// (25 -> 45 degC em 8 min, pico de +0,7 degC). Quem muda e' o
-// feedforward, que usa o ganho total.
-constexpr float PI_KP = 0.0637f;                // 1/degC
-constexpr float PI_KI = 0.000105f;              // 1/(degC*s)   Ti = 606 s
+// Rev. D (camara de policarbonato 25 cm, 5 lampadas + manta de 80 W):
+// ajustados em simulacao sobre o modelo de dois nos - 25 -> 45 degC em
+// 12 min, 45 -> 70 em 20 min, sobressinal < 0,3 degC.
+constexpr float PI_KP = 0.080f;                 // 1/degC
+constexpr float PI_KI = 0.000100f;              // 1/(degC*s)   Ti = 800 s
 
 // Controle de 2 graus de liberdade: feedforward pelo modelo identificado
 // mais o PI no erro. Com ele, baixar o setpoint de 50 para 32 degC cai de
@@ -79,53 +78,62 @@ constexpr float PI_INTEGRAL_BAND_C = 3.0f;
 constexpr float POT_DEADBAND_C = 0.5f;
 
 // ------------------------------------------------- modelo termico (planta)
-// Levantados no projeto; confirmar com o ensaio de degrau em malha aberta.
-constexpr float PLANT_TAU_S     = 640.0f;       // C/UA = 320/0.5
-constexpr float PLANT_GAIN_C    = 30.0f;        // deltaT em regime com duty=1
+// Camara de policarbonato 6 mm, 250 x 250 x 250 mm, base de MDF.
+// Estimativas de projeto (docs/hardware/README.md); confirmar com o ensaio
+// de degrau em malha aberta.
+//   UA  ~ 1,6 W/K   (5 faces de PC: U ~ 3,9 W/m2K, mais base e frestas)
+//   C   ~ 1,6 kJ/K  (metade interna das paredes + prateleira + ar)
+constexpr float PLANT_TAU_S     = 1000.0f;      // C/UA
+constexpr float PLANT_GAIN_C    = 16.0f;        // lampadas: 25 W / 1,6 W/K
 constexpr float PLANT_AMBIENT_C = 25.0f;
-// Cooler a 100 % multiplica por (1 + G) a troca de calor com o ambiente.
-constexpr float PLANT_FAN_GAIN  = 3.0f;
+// Cooler de 80 mm a 100 % multiplica por (1 + G) a troca com o ambiente.
+constexpr float PLANT_FAN_GAIN  = 5.0f;
 
-// Manta de silicone 12 V / 30 W colada sob um dissipador de aluminio
-// aletado (100 x 100 mm), com isolante embaixo. Ver plant_model.h.
-//   ganho  : 30 W / 0,5 W/K = 60 degC no ar com duty = 1
-//   tau_h  : ~150 J/K do dissipador / hA ~0,5 W/K = 300 s
-//   r      : hA / UA ~ 1
-// Estimativas de projeto: medir com o ensaio de degrau (r com a manta).
-constexpr float PLANT_HEATER_GAIN_C = 60.0f;
-constexpr float PLANT_HEATER_TAU_S  = 300.0f;
-constexpr float PLANT_HEATER_COUPLING = 1.0f;
-// TH2 (KSD301 NF no dissipador): abre a 100 degC, fecha de novo a ~85.
-constexpr float HEATER_TRIP_C  = 100.0f;
-constexpr float HEATER_RESET_C = 85.0f;
+// Manta de silicone 12 V / 80 W (200 x 200 mm) sob dois dissipadores
+// aletados, isolante embaixo, ventoinha de circulacao M2 soprando nas
+// aletas e prateleira perfurada por cima. Ver plant_model.h.
+//   ganho  : 80 W / 1,6 W/K = 50 degC no ar com duty = 1
+//   r      : hA / UA ~ 2 (aletas com ar forcado pela M2)
+//   tau_h  : ~470 J/K do dissipador / hA ~3,3 W/K = 140 s
+constexpr float PLANT_HEATER_GAIN_C = 50.0f;
+constexpr float PLANT_HEATER_TAU_S  = 140.0f;
+constexpr float PLANT_HEATER_COUPLING = 2.0f;
+// TH2 (KSD301 NF no dissipador) esta na cadeia do rele K1: abre a 120 degC
+// e corta lampadas e manta; fecha de novo a ~100.
+constexpr float HEATER_TRIP_C  = 120.0f;
+constexpr float HEATER_RESET_C = 100.0f;
+constexpr bool  HEATER_TRIP_CUTS_ALL = true;
 
 // ------------------------------------------------------- carga (lampadas)
-constexpr int   LAMP_COUNT   = 3;
+constexpr int   LAMP_COUNT   = 5;
 constexpr float LAMP_POWER_W = 5.0f;            // W5W
 constexpr float LAMP_V_NOM   = 12.0f;
-// Resistencia equivalente a quente das tres em paralelo: 12^2 / 15 = 9,6 ohms.
+// Resistencia equivalente a quente das cinco em paralelo: 12^2 / 25 = 5,76 ohms.
 constexpr float LAMP_R_EQ_OHM = (LAMP_V_NOM * LAMP_V_NOM) / (LAMP_COUNT * LAMP_POWER_W);
-// ESP32 com Wi-Fi + perdas do buck, vistos do barramento de 12 V.
-constexpr float BASE_POWER_W = 0.9f;
-// Ventoinha 12 V 40 x 40 mm tipica: ~0,1 A na rotacao maxima.
-constexpr float FAN_POWER_W  = 1.2f;
+// ESP32 com Wi-Fi + perdas do buck (0,9 W) + ventoinha de circulacao M2,
+// sempre ligada (1,8 W), vistos do barramento de 12 V.
+constexpr float BASE_POWER_W = 2.7f;
+// Ventoinha de exaustao 12 V 80 x 80 mm: ~0,15 A na rotacao maxima.
+constexpr float FAN_POWER_W  = 1.8f;
 
 // --------------------------------------------------------- carga (manta)
 constexpr bool  HEATER_ENABLED_DEFAULT = true;  // comando 'm 0' desliga
-constexpr float HEATER_POWER_W = 30.0f;
-constexpr float HEATER_R_OHM   = (LAMP_V_NOM * LAMP_V_NOM) / HEATER_POWER_W;   // 4,8 ohms
-// Ensaio de degrau com a manta: duty 1 levaria a ~115 degC em regime e
-// dispararia o corte de 68 degC antes de dar para medir a constante de
-// tempo. Com 0,4 o regime fica em ~61 degC.
-constexpr float STEP_TEST_DUTY_HEATER = 0.4f;
+constexpr float HEATER_POWER_W = 80.0f;
+constexpr float HEATER_R_OHM   = (LAMP_V_NOM * LAMP_V_NOM) / HEATER_POWER_W;   // 1,8 ohms
+// Ensaio de degrau com a manta: duty 1 levaria a ~91 degC em regime e
+// dispararia o corte de 78 degC antes de dar para medir a constante de
+// tempo. Com 0,6 o regime fica em ~65 degC.
+constexpr float STEP_TEST_DUTY_HEATER = 0.6f;
 
 // ---------------------------------------------------------------- display
 constexpr uint8_t DISPLAY_BRIGHTNESS = 4;       // 0..7
 
-// ---------------------------------------------- bateria 3S (so simulacao)
+// ------------------------------------------- bateria 3S2P (so simulacao)
 constexpr int   BATT_CELLS       = 3;
-constexpr float BATT_CAPACITY_WH = 33.3f;       // 3 x 18650 de 3000 mAh
-constexpr float BATT_R_INT_OHM   = 0.15f;       // pack inteiro
+// 3S2P: seis 18650 de 3000 mAh (alto dreno). Com a camara grande o pico
+// passa de 9 A; um 3S1P cairia demais de tensao.
+constexpr float BATT_CAPACITY_WH = 66.6f;
+constexpr float BATT_R_INT_OHM   = 0.08f;       // pack inteiro
 constexpr float ATX_VOLTAGE_V    = 12.0f;
 
 // ------------------------------------------------------------- aquisicao

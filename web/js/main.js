@@ -192,8 +192,9 @@ function spinFan(now) {
   const dt = Math.min(0.1, (now - (f.last || now)) / 1000);
   f.last = now;
   f.speed += (f.target - f.speed) * Math.min(1, dt / 0.6);
-  if (!reduceMotion.matches && f.speed > 0.002) {
-    f.angle = (f.angle + f.speed * 900 * dt) % 360;
+  if (f.speed > 0.002) {
+    // com "reduzir movimento" o icone gira mais devagar, mas ainda mostra o cooler ligado
+    f.angle = (f.angle + f.speed * 900 * dt * (reduceMotion.matches ? 0.35 : 1)) % 360;
     f.el.setAttribute('transform', `rotate(${f.angle.toFixed(1)} 16 16)`);
   }
   requestAnimationFrame(spinFan);

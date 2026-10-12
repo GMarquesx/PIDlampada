@@ -68,7 +68,19 @@ export class ChamberScene {
     this.fanLabelKey = '';
     this.drawnDisplay = undefined;
     this.visible = true;
-    this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // "Reduzir movimento" do sistema (no Windows: Configuracoes > Acessibilidade >
+    // Efeitos visuais > Efeitos de animacao desligado). O cooler e o ar mostram
+    // dados, entao continuam se mexendo, so que mais devagar; o que e' so enfeite
+    // (giro automatico da camera) fica desligado. ?anim=1 forca o modo completo.
+    const anim = new URLSearchParams(location.search).get('anim');
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotion = () => {
+      this.reduceMotion = anim === '1' ? false : anim === '0' ? true : mq.matches;
+      this.motionScale = this.reduceMotion ? 0.4 : 1;
+      if (this.controls && this.reduceMotion) this.controls.autoRotate = false;
+    };
+    applyMotion();
+    mq.addEventListener?.('change', applyMotion);
 
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
@@ -690,7 +702,7 @@ export class ChamberScene {
     const pos = this.air.geometry.attributes.position.array;
     const col = this.air.geometry.attributes.color.array;
     const warm = Math.max(0, Math.min(1, (this.target.T - this.target.amb) / 40));
-    const still = this.reduceMotion;
+    dt *= this.motionScale;          // movimento reduzido: mais devagar, nunca parado
     const cold = [0.28, 0.5, 0.95], hot = [1.0, 0.55, 0.22];
     const mix = (k, m) => [cold[0] + (hot[0] - cold[0]) * m, cold[1] + (hot[1] - cold[1]) * m, cold[2] + (hot[2] - cold[2]) * m].map((c) => c * k);
     const ventX = -IN / 2 + 0.5, fanX = IN / 2 - 1.5;
@@ -700,21 +712,21 @@ export class ChamberScene {
       const s = this.airSeed[i];
       let x, y, z, c;
       if (s.kind === 'out') {
-        if (!still) s.p += dt * s.v * (0.2 + 1.2 * f);
+        s.p += dt * s.v * (0.2 + 1.2 * f);
         if (s.p > 1) s.p -= 1;
         x = BOX.w / 2 + 1.5 + s.p * 20;
         y = FAN_Y + s.y * 3.2 * (1 + s.p * 0.9) + s.p * 2.4;
         z = s.z * 3.2 * (1 + s.p * 0.9);
         c = mix((1 - s.p) * f * 1.1, 0.45 + 0.55 * warm);
       } else if (s.kind === 'intake') {
-        if (!still) s.p += dt * s.v * (0.2 + 0.9 * f);
+        s.p += dt * s.v * (0.2 + 0.9 * f);
         if (s.p > 1) s.p -= 1;
         x = -BOX.w / 2 - 14 + s.p * 14;
         y = FLOOR + 3.2 + s.y * 2.0;
         z = s.z * 6.5;
         c = mix(Math.sin(s.p * Math.PI) * f * 0.9, 0);
       } else if (s.kind === 'path') {
-        if (!still) s.p += dt * s.v * (0.1 + 0.7 * f);
+        s.p += dt * s.v * (0.1 + 0.7 * f);
         if (s.p > 1) s.p -= 1;
         const p = s.p;
         // frestas -> aletas -> sobe pela prateleira -> converge no disco do cooler
@@ -726,7 +738,7 @@ export class ChamberScene {
         c = mix(Math.sin(Math.min(1, p * 1.12) * Math.PI) * f * 0.85, smooth(0.15, 0.7, p));
       } else if (s.kind === 'circ') {
         // M2: do fundo para a frente, entre as aletas
-        if (!still) s.p += dt * s.v * 0.55;
+        s.p += dt * s.v * 0.55;
         if (s.p > 1) s.p -= 1;
         x = s.x0 * 0.85;
         y = SINK.y + 0.8 + s.h * (SHELF_Y - SINK.y - 1.6);
@@ -737,7 +749,7 @@ export class ChamberScene {
         // porta aberta: plano neutro no meio da altura. Ar frio entra rente ao piso,
         // ar quente sai pela metade de cima (efeito chamine).
         const open = this.shown.door;
-        if (!still) s.p += dt * s.v * 0.32;
+        s.p += dt * s.v * 0.32;
         if (s.p > 1) s.p -= 1;
         const p = s.p;
         const zDoor = BOX.d / 2;
@@ -753,7 +765,7 @@ export class ChamberScene {
         }
       } else {
         // conveccao: sobe pelos furos da prateleira; com o cooler, e' puxada para ele
-        if (!still) s.p += dt * s.v * (0.16 + 0.22 * heatLvl);
+        s.p += dt * s.v * (0.16 + 0.22 * heatLvl);
         if (s.p > 1) { s.p -= 1; s.x0 = (Math.random() - 0.5) * (IN - 3); s.z0 = (Math.random() - 0.5) * (IN - 3); }
         const p = s.p;
         y = SHELF_Y + 0.3 + p * (ceil - SHELF_Y);
@@ -930,7 +942,7 @@ export class ChamberScene {
     const fanGoal = Math.max(0, Math.min(1, t.fan || 0));
     this.shown.fan += (fanGoal - this.shown.fan) * (1 - Math.exp(-dt / 0.8));
     const f = this.shown.fan;
-    const step = f > 0.005 && !this.reduceMotion ? Math.min((0.8 + (FAN_VISUAL_MAX - 0.8) * f) * dt, FAN_STEP_MAX) : 0;
+    const step = f > 0.005 ? Math.min((0.8 + (FAN_VISUAL_MAX - 0.8) * f) * dt * this.motionScale, FAN_STEP_MAX) : 0;
     this.fanAngle += step;
     this.fanRotor.rotation.x = this.fanAngle;
     this.fanGhosts[0].rotation.x = this.fanAngle - step * 0.5;
@@ -943,7 +955,7 @@ export class ChamberScene {
     if (labelKey !== this.fanLabelKey && fanGoal > 0.01) { this.fanLabelKey = labelKey; this.#drawFanLabel(fanGoal); }
 
     // M2 sempre ligada, rotacao constante
-    if (!this.reduceMotion) this.circAngle += 6 * dt;
+    this.circAngle += 6 * dt * this.motionScale;
     this.circRotor.rotation.x = this.circAngle;
     this.circBlur.opacity = 0.45;
 

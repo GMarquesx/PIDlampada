@@ -18,3 +18,8 @@ include/secrets.h
 
 # intermediarios do esquema
 docs/hardware/build/
+
+# auxiliares do LaTeX
+docs/hardware/latex/*.aux
+docs/hardware/latex/*.log
+docs/hardware/latex/*.synctex.gz

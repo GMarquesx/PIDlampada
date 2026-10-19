@@ -7,6 +7,7 @@
 | `Electrical_Schematic_Rev_D_EN.pdf` | O mesmo desenho em ingles |
 | `Desenho_Mecanico_Rev_A.pdf` | PIDL-MEC-001, A3, 2 folhas: corte A-A da camara de policarbonato (1:2) com baloes, lista de materiais mecanica, dimensionamento termico e notas de montagem (folha 1); plano de corte da chapa 1000 x 1000 (1:10), furacao dos cinco paineis e da prateleira (1:4), cantoneiras e tabela de furos (folha 2) |
 | `Mechanical_Drawing_Rev_A_EN.pdf` | O mesmo desenho em ingles |
+| `latex/` | O esquema Rev. D em LaTeX (circuitikz): `esquema_eletrico.tex` e o PDF compilado |
 | `Esquema_Eletrico_Rev_A/B/C.pdf`, `Electrical_Schematic_Rev_B/C_EN.pdf` | Revisoes anteriores (historico) |
 | `esquema_blocos.py` | Os dez blocos do esquema em SchemDraw (textos PT/EN) |
 | `esquema_dados.py` | Revisoes, textos, pinagem, notas, redes e lista de materiais do esquema |

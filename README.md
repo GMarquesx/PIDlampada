@@ -36,6 +36,7 @@ semestre / 2026.
 - [Ensaio de degrau](#ensaio-de-degrau)
 - [Testes](#testes)
 - [Analise e sintonia](#analise-e-sintonia)
+- [Artigos e banner](#artigos-e-banner)
 - [Hardware](#hardware)
 - [Limitacoes conhecidas](#limitacoes-conhecidas)
 
@@ -403,6 +404,19 @@ Tres resultados que valem para o relatorio:
 
 `simular_malha_fechada()` reproduz o algoritmo de `pi_controller.cpp` —
 mesma amostragem, mesma saturacao, mesmo anti-windup.
+
+## Artigos e banner
+
+O banner A0 e os dois artigos (formato SBSR) entregues no Projeto Integrador
+estao em [`docs/publicacoes/`](docs/publicacoes/):
+
+| Arquivo | Conteudo |
+|---------|----------|
+| [`PIDlampada_banner_A0.pdf`](docs/publicacoes/PIDlampada_banner_A0.pdf) | Banner A0 do grupo; o QR code abre o painel em modo demonstracao |
+| [`artigo-1-microcontroladores.pdf`](docs/publicacoes/artigo-1-microcontroladores.pdf) | Firmware embarcado no ESP32 para o controle de temperatura |
+| [`artigo-2-sistemas-digitais.pdf`](docs/publicacoes/artigo-2-sistemas-digitais.pdf) | Cadeia digital do sinal e controle PI em tempo discreto |
+
+Os fontes LaTeX ficam em [camara-termica-unip](https://github.com/GMarquesx/camara-termica-unip).
 
 ## Hardware
 

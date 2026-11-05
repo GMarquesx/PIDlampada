@@ -1,5 +1,17 @@
 # PIDlampada — Camara Termica com Controle PWM
 
+<p align="center">
+  <a href="https://gmarquesx.github.io/PIDlampada/?demo=1">
+    <img src="docs/img/simulador.gif" alt="Camara simulada no painel 3D: lampadas acesas, manta, prateleira e cooler" width="480">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://gmarquesx.github.io/PIDlampada/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20ABRIR%20O%20SIMULADOR-clique%20aqui-E8890C?style=for-the-badge" alt="Abrir o simulador" height="44"></a>
+</p>
+
+<p align="center"><sub>Roda no navegador e no celular, sem instalar nada. Clique na imagem ou no botao.</sub></p>
+
 Camara termica de policarbonato de 250 x 250 x 250 mm (13,8 L por dentro)
 aquecida por cinco lampadas automotivas W5W no teto e por uma manta de
 silicone de 80 W no piso, sob dois dissipadores aletados e uma prateleira de
